@@ -1,0 +1,1 @@
+pyinstaller --onefile --name pocket-reasoning-api ../src/main.py

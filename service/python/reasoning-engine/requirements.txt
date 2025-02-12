@@ -1,0 +1,6 @@
+# @todo freeze versions
+fastapi
+uvicorn
+torch
+pydantic
+transformers
