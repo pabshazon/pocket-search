@@ -4,3 +4,5 @@ uvicorn
 torch
 pydantic
 transformers
+transformers[torch]
+datasets
