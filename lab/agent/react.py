@@ -2,7 +2,7 @@ import re
 from openai import OpenAI
 
 client = OpenAI(
-    api_key="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"
+    api_key=""  # @todo add
 )
 
 system_prompt = """
