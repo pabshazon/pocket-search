@@ -1,13 +1,13 @@
 {
-  "$schema": "https://schema.tauri.app/config/2",
+  "$schema": "https://schema.tauri.app/config/2", 
   "productName": "pocket-search",
   "version": "0.1.0",
-  "identifier": "ai.on-metal.pocket-search.desktop",
+  "identifier": "ai.on-metal.pocket-search.desktop-app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run build",
-    "frontendDist": "../dist"
+    "frontendDist": "{{POCKET_GITHUB_PATH}}dist/client/desktop-app/react"
   },
   "app": {
     "windows": [
