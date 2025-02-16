@@ -22,7 +22,7 @@ CREATE INDEX idx_task_created_at ON task(created_at);
 -- iNode inspired table for file system metadata. hyper_node is the main interface referring to a multi-modal-multi-dimensional node: a hyper_node. Could be simplified to multi_modal_node or m_node or mi_node, but they are bad in other tradeoffs, so we are coining a term. HyperNode.
 CREATE TABLE hyper_node (
     id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-    name TEXT NOT NULL,
+    name TEXT NOT NULL UNIQUE,
     parent_hyper_node_id TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

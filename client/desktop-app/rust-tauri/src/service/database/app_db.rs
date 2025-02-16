@@ -35,25 +35,6 @@ pub async fn store_file_system_entries(app_handle: &AppHandle, entries: &[FileSy
         return Ok(());
     }
 
-    /*
-       Map the available fields to the table columns as follows:
-       
-       - name: Derived from the file system entry's file (or folder) name.
-       - parent_hyper_node_id: Not determined in this flow; leaving as NULL.
-       - is_folder & is_file: Assigned based on entry type.
-       - is_inside_fs_file: Defaulting to 0.
-       - fs_full_path: Full path from the entry.
-       - fs_file_name: Same as derived from the full path.
-       - fs_inode: Unwrapped inode (defaulting to 0 if absent).
-       - fs_file_extension: Derived from the entry path.
-       - fs_file_size: Taken from the entry.
-       - fs_device_id, fs_user_id, fs_group_id: Extracted from OS metadata if available, otherwise defaulting to 0.
-       - cs_what_is_fs_folder_about OR cs_what_is_fs_file_about: OS metadata is serialized to JSON.
-         (For directories, we use cs_what_is_fs_folder_about; for files, cs_what_is_fs_file_about.)
-       - cs_hnode_title: Left as NULL for now.
-       - cs_hnode_summary: Semantic metadata is serialized to JSON if available.
-    */
-
     let mut query_builder = QueryBuilder::<sqlx::Sqlite>::new(
         "INSERT INTO hyper_node (
             name,
@@ -163,7 +144,7 @@ pub async fn store_file_system_entries(app_handle: &AppHandle, entries: &[FileSy
 
     // On conflict (i.e. the same fs_full_path), update the record with the new values.
     query_builder.push(
-        " ON CONFLICT(fs_full_path) DO UPDATE SET
+        " ON CONFLICT(name) DO UPDATE SET
             name = excluded.name,
             is_folder = excluded.is_folder,
             is_file = excluded.is_file,
