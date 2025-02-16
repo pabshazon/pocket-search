@@ -17,7 +17,7 @@ const ENFORCED_FILTER_PATTERNS: &[&str] = &[
     r"^\.continue$",
     r"^\.void-editor$",
     r"^\.cargo$",
-    r"^\..rustup$",
+    r"^\.rustup$",
     r"^\.ssh$",
     r"^\.vscode$",
     r"^\.ollama$",    
