@@ -13,7 +13,7 @@ const ENFORCED_FILTER_PATTERNS: &[&str] = &[
     r"^\.config$",
     r"^\.CFUserTextEncoding$",
     r"^\.npmrc$",
-    r"^\.zoom*$",
+    r"^\.zoom.*$",
     r"^\.continue$",
     r"^\.void-editor$",
     r"^\.cargo$",
