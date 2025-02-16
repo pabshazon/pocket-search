@@ -1,9 +1,13 @@
 use tauri::command;
 use anyhow::Result;
-use crate::domain::on_metal::middleware::file_system::folder_scanner::FolderScanner;
-use crate::domain::on_metal::middleware::file_system::folder_scannable::FolderScannable;
 use regex::Regex;
 use std::collections::HashSet;
+
+use crate::domain::on_metal::middleware::file_system::folder_scanner::FolderScanner;
+use crate::domain::on_metal::middleware::file_system::folder_scannable::FolderScannable;
+use crate::domain::on_metal::middleware::file_system::entry_type::EntryType;
+use crate::domain::on_metal::middleware::file_system::file_system_entry::FileSystemEntry;
+
 
 const ENFORCED_FILTER_PATTERNS: &[&str] = &[
     r"^\.DS_Store$", 
@@ -25,12 +29,10 @@ const ENFORCED_FILTER_PATTERNS: &[&str] = &[
     r"^\.Trash$",
 ];
 
+const TASK_TRIGGER_EXTENSIONS: &[&str] = &[".pdf", ".key", ".docx", ".xlsx", ".txt", ".md", ".csv", ".json", ".xml", ".html", ".css", ".js", ".ts", ".py", ".java", ".c", ".cpp", ".h", ".hpp", ".cs", ".vb", ".php", ".rb", ".swift", ".kt", ".go", ".rs", ".scala", ".sql", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".log"];
+
 #[command]
-pub async fn scan_folder_and_queue_tasks(
-    folder_path: String, 
-    app_handle: tauri::AppHandle,
-    filter_pattern: Option<String>
-) -> Result<(), String> {
+pub async fn scan_folder_and_queue_tasks(folder_path: String, app_handle: tauri::AppHandle, filter_pattern: Option<String>) -> Result<(), String> {
     println!("Scanning folder '{}' and queueing tasks", folder_path);
     
     let scanner = FolderScanner::new(folder_path.clone());
@@ -57,7 +59,7 @@ pub async fn scan_folder_and_queue_tasks(
         })
         .collect();
 
-    if let Err(err) = crate::service::database::app_db::store_file_system_entries(&app_handle, &all_entries).await {
+    if let Err(err) = crate::service::database::app_db::store_file_system_entries(&app_handle, &all_entries, TASK_TRIGGER_EXTENSIONS).await {
          eprintln!("Error storing FS entries in bulk: {}", err);
     } else {
          println!("Successfully stored {} file system entries.", all_entries.len());
@@ -72,4 +74,4 @@ pub async fn scan_folder_and_queue_tasks(
     }
     
     Ok(())
-} 
+}

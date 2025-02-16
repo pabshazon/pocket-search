@@ -7,7 +7,7 @@ CREATE TABLE task (
     status TEXT NOT NULL,
     priority INTEGER NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    performed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    performed_at DATETIME,
     
     -- Foreign Key Constraint
     FOREIGN KEY (hyper_node_id) REFERENCES hyper_node(id)

@@ -4,7 +4,7 @@ use crate::domain::on_metal::middleware::file_system::file_system_entry::FileSys
 use serde_json;
 use tauri::{AppHandle, Manager};
 use crate::domain::on_metal::middleware::file_system::entry_type::EntryType;
-use sqlx::{QueryBuilder};
+use sqlx::{QueryBuilder, Row};
 
 fn build_db_url(app_handle: &AppHandle) -> Result<String, String> {
     let app_data_dir = app_handle.path().app_data_dir()
@@ -17,13 +17,21 @@ fn build_db_url(app_handle: &AppHandle) -> Result<String, String> {
     Ok(format!("sqlite:{}", db_path.to_string_lossy()))
 }
 
-/// @todo In production, consider reusing a connection pool.
-pub async fn store_file_system_entries(app_handle: &AppHandle, entries: &[FileSystemEntry]) -> Result<(), String> {
-    // Establish database connection.
+async fn get_db_pool(app_handle: &AppHandle) -> Result<SqlitePool, String> {
     let db_url = build_db_url(app_handle)?;
-    let pool = SqlitePool::connect(&db_url)
+    SqlitePool::connect(&db_url)
         .await
-        .map_err(|e| format!("Failed to connect to database: {}", e))?;
+        .map_err(|e| format!("Failed to connect to database: {}", e))
+}
+
+/// @todo In production, consider reusing a connection pool.
+pub async fn store_file_system_entries(
+    app_handle: &AppHandle,
+    entries: &[FileSystemEntry],
+    task_trigger_extensions: &[&str]
+) -> Result<(), String> {
+    // Establish database connection.
+    let pool = get_db_pool(app_handle).await?;
 
     // Process only those entries that have a valid inode (i.e. representing a file/folder).
     let file_and_folder_entries: Vec<&FileSystemEntry> = entries
@@ -34,6 +42,9 @@ pub async fn store_file_system_entries(app_handle: &AppHandle, entries: &[FileSy
     if file_and_folder_entries.is_empty() {
         return Ok(());
     }
+
+    // Clone the vector before using it in push_values
+    let file_and_folder_entries_clone = file_and_folder_entries.clone();
 
     let mut query_builder = QueryBuilder::<sqlx::Sqlite>::new(
         "INSERT INTO hyper_node (
@@ -57,7 +68,7 @@ pub async fn store_file_system_entries(app_handle: &AppHandle, entries: &[FileSy
         ) "
     );
 
-    query_builder.push_values(file_and_folder_entries, |mut b, entry| {
+    query_builder.push_values(file_and_folder_entries_clone, |mut b, entry| {
         use std::path::Path;
 
         let path = entry.path.as_str();
@@ -116,8 +127,8 @@ pub async fn store_file_system_entries(app_handle: &AppHandle, entries: &[FileSy
 
         let hnode_name = if is_inside_fs_file == 0 {
             match parent_hyper_node_id {
-                Some(parent_id) => format!("{}::{}::{}", path, fs_file_name, parent_id),
-                None => format!("{}::{}", path, fs_file_name),
+                Some(parent_id) => format!("{}::{}", path, parent_id),
+                None => format!("{}", path),
             }
         } else {
             format!("{}::{}", path, fs_file_name)
@@ -142,7 +153,7 @@ pub async fn store_file_system_entries(app_handle: &AppHandle, entries: &[FileSy
          .push_bind(cs_hnode_summary);               // cs_hnode_summary
     });
 
-    // On conflict (i.e. the same fs_full_path), update the record with the new values.
+    // Add RETURNING clause to capture hyper_node_id
     query_builder.push(
         " ON CONFLICT(name) DO UPDATE SET
             name = excluded.name,
@@ -159,14 +170,102 @@ pub async fn store_file_system_entries(app_handle: &AppHandle, entries: &[FileSy
             cs_what_is_fs_folder_about = excluded.cs_what_is_fs_folder_about,
             cs_what_is_fs_file_about = excluded.cs_what_is_fs_file_about,
             cs_hnode_title = excluded.cs_hnode_title,
-            cs_hnode_summary = excluded.cs_hnode_summary"
+            cs_hnode_summary = excluded.cs_hnode_summary
+        RETURNING id"
     );
 
     let query = query_builder.build();
 
-    query.execute(&pool)
+    // Execute the query and collect the returned hyper_node_ids
+    let hyper_node_ids: Vec<String> = query
+        .fetch_all(&pool)
         .await
-        .map_err(|e| format!("Failed to upsert file system entries: {}", e))?;
+        .map_err(|e| format!("Failed to upsert file system entries: {}", e))?
+        .iter()
+        .map(|row| {
+            let id: String = row.try_get("id").unwrap_or_default();
+            println!("Fetched hyper_node_id: {}", id); // Debugging output
+            id
+        })
+        .collect();
+
+    // Use the original file_and_folder_entries for further processing
+    let task_entries: Vec<&FileSystemEntry> = file_and_folder_entries.into_iter()
+        .filter(|entry| {
+            if entry.entry_type == EntryType::Directory {
+                return true;
+            }
+            if let Some(extension) = std::path::Path::new(&entry.path).extension() {
+                return task_trigger_extensions.contains(&extension.to_str().unwrap_or(""));
+            }
+            false
+        })
+        .collect();
+
+    // Create tasks for each entry
+    for (entry, hyper_node_id) in task_entries.iter().zip(hyper_node_ids.iter()) {
+        let task_name = format!("Task for {}", entry.path);
+        let task_description = format!("Generated task for entry at path: {}", entry.path);
+
+        // Use QueryBuilder to check if the task already exists
+        let mut existing_task_query_builder = QueryBuilder::<sqlx::Sqlite>::new(
+            "SELECT COUNT(*) as count FROM task WHERE name = "
+        );
+
+        existing_task_query_builder
+            .push_bind(task_name.clone())
+            .push(" AND data = ")
+            .push_bind(serde_json::Value::Null.to_string())
+            .push(" AND description = ")
+            .push_bind(task_description.clone())
+            .push(" AND hyper_node_id = ")
+            .push_bind(hyper_node_id.as_str())
+            .push(" AND priority = ")
+            .push_bind(0) // priority
+            .push(" AND status = ")
+            .push_bind("pending"); // status
+
+        let existing_task_query = existing_task_query_builder.build();
+
+        let existing_task_count: i64 = existing_task_query
+            .fetch_one(&pool)
+            .await
+            .map_err(|e| format!("Failed to check existing task: {}", e))?
+            .try_get("count")
+            .unwrap_or(0);
+
+
+        if existing_task_count > 0 {
+            println!("Repeated the demand for a pending task");
+            continue;
+        }
+
+        let mut task_query_builder = QueryBuilder::<sqlx::Sqlite>::new(
+            "INSERT INTO task (
+                name,
+                data,
+                description,
+                hyper_node_id,
+                priority,
+                status
+            ) "
+        );
+
+        task_query_builder.push_values(std::iter::once(entry), |mut b, _| {
+            b.push_bind(task_name.clone())
+             .push_bind(serde_json::Value::Null.to_string()) // Convert JSON value to string
+             .push_bind(task_description.clone())
+             .push_bind(hyper_node_id.as_str()) // Use a reference to the hyper_node_id
+             .push_bind(0) // priority
+             .push_bind("pending"); // status
+        });
+
+        let task_query = task_query_builder.build();
+
+        task_query.execute(&pool)
+            .await
+            .map_err(|e| format!("Failed to insert task for entry: {}", e))?;
+    }
 
     Ok(())
 }
