@@ -8,7 +8,7 @@ pub async fn perform_tasks() -> Result<(), String> {
 
     // Make HTTP request to FastAPI endpoint
     let client = Client::new();
-    match client.get("http://127.0.0.1:8000/hello").send().await {
+    match client.get("http://127.0.0.1:8000/consume_tasks").send().await {
         Ok(response) => {
             if response.status().is_success() {
                 println!("Successfully connected to FastAPI service");

@@ -1,10 +1,14 @@
 from fastapi import FastAPI, Body, Header
-# from src.controllers.embeddings_controllers import EmbeddingsController
+
 from typing import Optional
 import os
 import sys
 
+from src.controllers.tasks_controller import TasksController
+
+
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
 
 app = FastAPI()
 
@@ -12,14 +16,11 @@ app = FastAPI()
 async def root():
     return {"message": "Status Online"}
     
-# @app.post("/api/embeddings")
-# async def embeddings( payload: dict = Body(...), user_agent: Optional[str] = Header(None)):
-#     text  = payload.get("text")
-#     model = payload.get("model")
-#     task  = payload.get("task")
-#
-#     return await EmbeddingsController.embeddings(text, model, task)
-
+@app.get("/consume_tasks")
+async def consume_tasks():
+    tasks_controller = TasksController()
+    result = tasks_controller.consume_tasks_table()
+    return result
 
 if __name__ == "__main__":
     import uvicorn
