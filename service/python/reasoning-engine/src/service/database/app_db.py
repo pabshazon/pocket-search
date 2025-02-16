@@ -11,13 +11,11 @@ class AppDB:
         return cls._instance
 
     def _initialize(self):
-        # Get the app data directory from an environment variable
-        pocket_github_path = os.getenv("POCKET_GITHUB_PATH")
-        if not pocket_github_path:
-            raise RuntimeError("POCKET_GITHUB_PATH environment variable is not set")
+        # Get the current macOS user's home directory
+        home_directory = os.path.expanduser("~")
 
         # Construct the app data directory path
-        app_data_dir = os.path.join(pocket_github_path, "client/desktop-app/app_data")
+        app_data_dir = os.path.join(home_directory, "Library/Application Support/ai.on-metal.pocket-search.desktop-app")
         if not os.path.exists(app_data_dir):
             os.makedirs(app_data_dir)
 

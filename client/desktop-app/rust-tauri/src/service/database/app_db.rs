@@ -190,6 +190,7 @@ pub async fn store_file_system_entries(
         .collect();
 
     // Use the original file_and_folder_entries for further processing
+    // @todo important to extract this tasks from here.
     let task_entries: Vec<&FileSystemEntry> = file_and_folder_entries.into_iter()
         .filter(|entry| {
             if entry.entry_type == EntryType::Directory {
@@ -214,9 +215,9 @@ pub async fn store_file_system_entries(
 
         existing_task_query_builder
             .push_bind(task_name.clone())
-            .push(" AND data = ")
+            .push(" AND (data IS NULL OR data = ")
             .push_bind(serde_json::Value::Null.to_string())
-            .push(" AND description = ")
+            .push(") AND description = ")
             .push_bind(task_description.clone())
             .push(" AND hyper_node_id = ")
             .push_bind(hyper_node_id.as_str())
