@@ -86,47 +86,23 @@ impl FolderScannable for FolderScanner {
     fn scan(&self) -> Result<(Vec<FileSystemEntry>, Vec<FileSystemEntry>), String> {
         let mut file_entries      = Vec::new();
         let mut directory_entries = Vec::new();
-        let path                                 = Path::new(&self.folder_path);
+        let path                  = Path::new(&self.folder_path);
 
         if !path.is_dir() {
             return Err("Provided path is not a directory".to_string());
         }
 
+        // Add the root folder path as an entry
+        let root_entry = self.create_file_system_entry(&path)?;
+        directory_entries.push(root_entry);
+
         let read_dir = fs::read_dir(path)
             .map_err(|e| format!("Failed to read directory: {}", e))?;
+        
         for entry in read_dir {
             let entry = entry.map_err(|e| e.to_string())?;
             let path_buf = entry.path();
-            let metadata = fs::metadata(&path_buf)
-                .map_err(|e| e.to_string())?;
-            
-            let entry_type = if path_buf.is_file() {
-                EntryType::File
-            } else if path_buf.is_dir() {
-                EntryType::Directory
-            } else {
-                continue;
-            };
-
-            let mut os_metadata = None;
-            let mut inode        = None;
-
-            if self.os == "Linux" || self.os == "macOS" {
-                inode       = Some(metadata.ino());
-                os_metadata = FolderScanner::get_os_metadata(&path_buf);
-            } else if self.os == "Windows" {
-                // @todo Windows-specific logic if needed.
-            }
-
-            let fs_entry = FileSystemEntry {
-                entry_type:        entry_type,
-                path:              path_buf.display().to_string(),
-                file_size:         metadata.len(),
-                is_read_only:      metadata.permissions().readonly(),
-                inode:             inode,
-                os_metadata:       os_metadata,
-                semantic_metadata: None,
-            };
+            let fs_entry = self.create_file_system_entry(&path_buf)?;
 
             match fs_entry.entry_type {
                 EntryType::File => {
@@ -142,4 +118,38 @@ impl FolderScannable for FolderScanner {
     }
 }
 
-// Removed inline store_fs_entry. 
+// Helper function to create a FileSystemEntry
+impl FolderScanner {
+    fn create_file_system_entry(&self, path: &Path) -> Result<FileSystemEntry, String> {
+        let metadata = fs::metadata(path)
+            .map_err(|e| e.to_string())?;
+
+        let entry_type = if path.is_file() {
+            EntryType::File
+        } else if path.is_dir() {
+            EntryType::Directory
+        } else {
+            return Err("Unsupported entry type".to_string());
+        };
+
+        let mut os_metadata = None;
+        let mut inode = None;
+
+        if self.os == "Linux" || self.os == "macOS" {
+            inode = Some(metadata.ino());
+            os_metadata = FolderScanner::get_os_metadata(path);
+        } else if self.os == "Windows" {
+            // @todo Windows-specific logic if needed.
+        }
+
+        Ok(FileSystemEntry {
+            entry_type,
+            path: path.display().to_string(),
+            file_size: metadata.len(),
+            is_read_only: metadata.permissions().readonly(),
+            inode,
+            os_metadata,
+            semantic_metadata: None,
+        })
+    }
+} 

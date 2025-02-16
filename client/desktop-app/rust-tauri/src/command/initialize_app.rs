@@ -7,6 +7,7 @@ use tokio::runtime::Runtime;
 #[command]
 pub fn init_db(app_handle: &AppHandle) -> Result<(), String> {
     println!("Initializing database...");
+
     let app_data_dir = app_handle.path().app_data_dir()
         .map_err(|e| format!("Failed to get app data directory: {}", e))?;
 
@@ -32,6 +33,11 @@ pub fn init_db(app_handle: &AppHandle) -> Result<(), String> {
 #[command]
 pub fn run_db_migrations(app_handle: &AppHandle) -> Result<(), String> {
     println!("Initializing db migrations...");
+
+    // @todo This is a hack to get the migrations path. Move it to a config file that can work for dev and prod.
+    let pocket_github_path: std::result::Result<String, std::env::VarError> = env::var("POCKET_GITHUB_PATH");
+    let migrations_path: String = format!("{}client/desktop-app/db_migrations", pocket_github_path.unwrap());
+
     let app_data_dir = app_handle.path().app_data_dir()
         .map_err(|e| format!("Failed to get app data directory: {}", e))?;
 
@@ -46,10 +52,6 @@ pub fn run_db_migrations(app_handle: &AppHandle) -> Result<(), String> {
         println!(">> DB url: {:?}", db_url);
     }
 
-    let pocket_github_path = env::var("POCKET_GITHUB_PATH")
-        .map_err(|_| "Environment variable POCKET_GITHUB_PATH not set".to_string())?;
-
-    let migrations_path = format!("{}client/desktop-app/migrations", pocket_github_path);
     if cfg!(debug_assertions) {
         println!(">> DB migrations path: {:?}", migrations_path);
     }
@@ -67,7 +69,7 @@ pub fn run_db_migrations(app_handle: &AppHandle) -> Result<(), String> {
             return Err(format!("Migrations path does not exist: {}", migrations_path));
         }
 
-        sqlx::migrate!("../../../client/desktop-app/migrations")
+        sqlx::migrate!("../../../client/desktop-app/db_migrations")
             .run(&pool)
             .await
             .map_err(|e| format!("Failed to run migrations: {}", e))?;
