@@ -8,7 +8,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 app = FastAPI()
 
-@app.get("/")
+@app.get("/hello")
 async def root():
     return {"message": "Status Online"}
     
@@ -23,4 +23,4 @@ async def root():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=7777)
+    uvicorn.run(app, host="127.0.0.1", port=8000)

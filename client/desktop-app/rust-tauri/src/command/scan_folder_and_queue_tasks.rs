@@ -62,6 +62,14 @@ pub async fn scan_folder_and_queue_tasks(
     } else {
          println!("Successfully stored {} file system entries.", all_entries.len());
     }
+
+    // Call the perform_tasks function
+    use crate::command::perform_tasks::perform_tasks;
+    if let Err(err) = perform_tasks().await {
+        eprintln!("Error performing tasks: {}", err);
+    } else {
+        println!("Tasks performed successfully.");
+    }
     
     Ok(())
 } 
