@@ -12,23 +12,11 @@ class Task(BaseModel):
     hyper_node_id: Optional[str]
     name: str
     description: Optional[str]
-    data: Optional[Dict[str, Any]] = None
     status: str
     priority: int
     created_at: Optional[datetime]
     performed_at: Optional[datetime]
     # Add other fields as necessary 
-
-    @validator('data', pre=True, always=True)
-    def set_data(cls, v):
-        return v or {}
-
-    @staticmethod
-    def _deserialize_task(columns, row):
-        """Helper method to deserialize a database row into a Task instance using column names."""
-        task_attributes = dict(zip(columns, row))
-        task_attributes['data'] = json.loads(task_attributes['data']) if task_attributes['data'] and task_attributes['data'] != 'null' else {}
-        return Task(**task_attributes)
 
     @staticmethod
     def fetch_all_tasks():
@@ -39,7 +27,7 @@ class Task(BaseModel):
             columns = [column[0] for column in cursor.description]
             tasks = cursor.fetchall()
             
-            task_list = [Task._deserialize_task(columns, row) for row in tasks]
+            task_list = [Task(**dict(zip(columns, row))) for row in tasks]
             return task_list
         except sqlite3.Error as e:
             raise HTTPException(status_code=500, detail=f"Database error: {e}")

@@ -3,7 +3,6 @@ CREATE TABLE task (
     hyper_node_id TEXT,
     name TEXT NOT NULL,
     description TEXT,
-    data JSON,
     status TEXT NOT NULL,
     priority INTEGER NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

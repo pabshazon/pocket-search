@@ -216,9 +216,7 @@ pub async fn store_file_system_entries(
 
         existing_task_query_builder
             .push_bind(task_name.clone())
-            .push(" AND (data IS NULL OR data = ")
-            .push_bind(serde_json::Value::Null.to_string())
-            .push(") AND description = ")
+            .push(" AND description = ")
             .push_bind(task_description.clone())
             .push(" AND hyper_node_id = ")
             .push_bind(hyper_node_id.as_str())
@@ -245,7 +243,6 @@ pub async fn store_file_system_entries(
         let mut task_query_builder = QueryBuilder::<sqlx::Sqlite>::new(
             "INSERT INTO task (
                 name,
-                data,
                 description,
                 hyper_node_id,
                 priority,
@@ -255,7 +252,6 @@ pub async fn store_file_system_entries(
 
         task_query_builder.push_values(std::iter::once(entry), |mut b, _| {
             b.push_bind(task_name.clone())
-             .push_bind(serde_json::to_string(&json!({"entry_type": entry.entry_type})).unwrap()) // Convert entry_type to JSON string
              .push_bind(task_description.clone())
              .push_bind(hyper_node_id.as_str()) // Use a reference to the hyper_node_id
              .push_bind(0) // priority

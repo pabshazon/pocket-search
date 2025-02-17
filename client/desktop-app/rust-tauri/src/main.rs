@@ -10,6 +10,7 @@ use command::perform_tasks::perform_tasks;
 use tauri::Manager;
 use std::process::{Command, Child};
 use std::sync::{Arc, Mutex};
+use tokio;
 
 struct FastAPIServer {
     child: Option<Child>,
@@ -50,6 +51,15 @@ fn main() {
             println!("----{:?}-----", path);
             init_db(app.handle())?;
             run_db_migrations(app.handle())?;
+
+            // HACK @todo remove for prod.
+            tauri::async_runtime::spawn(async {
+                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                if let Err(e) = perform_tasks().await {
+                    eprintln!("Error performing tasks: {}", e);
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
