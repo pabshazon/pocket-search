@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
-from src.domain.on_metal.models.task import Task
-from src.domain.on_metal.models.hnode import HNode
+from src.service.database.models.task import Task
+from src.service.database.models.hnode import HNode
+from src.domain.on_metal.tasks.Analyzer import Analyzer
 import logging
 
 class TasksController:
@@ -12,11 +13,10 @@ class TasksController:
                     hnode = HNode.fetch_by_hyper_node_id(task.hyper_node_id)
                     if hnode.is_file == 1:
                         print("File")
-
+                        Analyzer.analyze_file(hnode)
                     elif hnode.is_folder == 1:
                         print("Folder")
-                    #     file_hnode = HNode.fetch_by_hyper_node_id(task.hyper_node_id)
-                    #     print(file_hnode)
+                        Analyzer.analyze_folder(hnode)
                     else:
                         print("Unknown")
                         raise HTTPException(status_code=400, detail="Unknown task type")
@@ -28,6 +28,8 @@ class TasksController:
             logging.error(f"An unexpected error occurred: {str(e)}")
             raise HTTPException(status_code=500, detail="An unexpected error occurred while processing tasks.")
         
+        print("All tasks done.")
+
         response = {
             "result": f"All tasks Done. Number of tasks performed: {len(tasks)}"
         }

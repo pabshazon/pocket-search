@@ -1,8 +1,13 @@
 # @todo freeze versions
 fastapi
 uvicorn
-torch
+torch>=1.13.0
 pydantic
-transformers
+transformers>=4.30.0
 transformers[torch]
 datasets
+PyMuPDF
+PyPDF2
+opencv-python
+Pillow
+
