@@ -1,6 +1,6 @@
 #!/bin/sh
 echo "@todo: fix the Remember you have to manually npm install from desktop-app folder."
-
+echo "@todo: fix the Remember you have to manually pip install -r requirements.txt from python service folder."
 # Kill any process using port 8000
 PORT=8000
 PID=$(lsof -t -i:$PORT)
