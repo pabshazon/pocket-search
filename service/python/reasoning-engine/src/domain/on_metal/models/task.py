@@ -4,6 +4,8 @@ from datetime import datetime
 import sqlite3
 from fastapi import HTTPException
 from src.service.database.app_db import AppDB
+import json
+import logging
 
 class Task(BaseModel):
     id: int
@@ -22,42 +24,22 @@ class Task(BaseModel):
         return v or {}
 
     @staticmethod
+    def _deserialize_task(columns, row):
+        """Helper method to deserialize a database row into a Task instance using column names."""
+        task_attributes = dict(zip(columns, row))
+        task_attributes['data'] = json.loads(task_attributes['data']) if task_attributes['data'] and task_attributes['data'] != 'null' else {}
+        return Task(**task_attributes)
+
+    @staticmethod
     def fetch_all_tasks():
         connection = AppDB().get_connection()
         cursor = connection.cursor()
         try:
             cursor.execute("SELECT * FROM task")
+            columns = [column[0] for column in cursor.description]
             tasks = cursor.fetchall()
             
-            # Debug: Print fetched rows
-            print("Fetched rows:", tasks)
-            
-            # Convert fetched data to Task instances
-            task_list = []
-            for row in tasks:
-                # Debug: Print each row's data field
-                print("Row data field before conversion:", row[4])
-                
-                # Convert 'null' string to an empty dictionary
-                data_field = row[4] if row[4] != 'null' else {}
-                
-                task = Task(
-                    id=row[0], 
-                    hyper_node_id=row[1], 
-                    name=row[2], 
-                    description=row[3], 
-                    data=data_field,  # Use the converted data field
-                    status=row[5], 
-                    priority=row[6], 
-                    created_at=row[7], 
-                    performed_at=row[8]
-                )
-                
-                # Debug: Print the task instance
-                print("Created Task instance:", task)
-                
-                task_list.append(task)
-            
+            task_list = [Task._deserialize_task(columns, row) for row in tasks]
             return task_list
         except sqlite3.Error as e:
             raise HTTPException(status_code=500, detail=f"Database error: {e}")

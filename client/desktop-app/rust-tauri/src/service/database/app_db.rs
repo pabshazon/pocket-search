@@ -5,6 +5,7 @@ use serde_json;
 use tauri::{AppHandle, Manager};
 use crate::domain::on_metal::middleware::file_system::entry_type::EntryType;
 use sqlx::{QueryBuilder, Row};
+use serde_json::json;
 
 fn build_db_url(app_handle: &AppHandle) -> Result<String, String> {
     let app_data_dir = app_handle.path().app_data_dir()
@@ -205,8 +206,8 @@ pub async fn store_file_system_entries(
 
     // Create tasks for each entry
     for (entry, hyper_node_id) in task_entries.iter().zip(hyper_node_ids.iter()) {
-        let task_name = format!("Task for {}", entry.path);
-        let task_description = format!("Generated task for entry at path: {}", entry.path);
+        let task_name = format!("Analyze-new");
+        let task_description = format!("Perform the first analysis for the FS Entry.");
 
         // Use QueryBuilder to check if the task already exists
         let mut existing_task_query_builder = QueryBuilder::<sqlx::Sqlite>::new(
@@ -254,7 +255,7 @@ pub async fn store_file_system_entries(
 
         task_query_builder.push_values(std::iter::once(entry), |mut b, _| {
             b.push_bind(task_name.clone())
-             .push_bind(serde_json::Value::Null.to_string()) // Convert JSON value to string
+             .push_bind(serde_json::to_string(&json!({"entry_type": entry.entry_type})).unwrap()) // Convert entry_type to JSON string
              .push_bind(task_description.clone())
              .push_bind(hyper_node_id.as_str()) // Use a reference to the hyper_node_id
              .push_bind(0) // priority
