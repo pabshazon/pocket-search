@@ -16,10 +16,10 @@ class DocumentTypeClassifier:
         self.logger = logging.getLogger(__name__)
         
         try:
-            self.llm_config = ModelsConfig.LLM
-            self.model      = self.llm_config.model
-            self.tokenizer  = self.llm_config.tokenizer
-            self.device     = self.llm_config.device
+            self.llm_config = ModelsConfig.LLM_OLLAMA
+            self.model = self.llm_config.model
+            # Remove tokenizer as it's not needed for Ollama
+            self.device = 'cpu'  # Simplified device handling for Ollama
             
         except Exception as e:
             self.logger.error(f"Failed to initialize document classifier: {str(e)}")
@@ -58,26 +58,15 @@ class DocumentTypeClassifier:
     def _classify_with_llm(self, prompt: str) -> str:
         """Use LLM to classify based on prompt."""
         try:
-            inputs = self.tokenizer(
-                prompt,
-                return_tensors="pt",
-            ).to(self.device)
+            # Simplified to only use Ollama service
+            response = self.model.generate(
+                prompt=prompt,
+                temperature=0.7
+            )
+            clean_response = response.strip().lower()
             
-            with torch.no_grad():
-                outputs = self.model.generate(
-                    **inputs,
-                    max_new_tokens=50,
-                    do_sample=True,
-                    temperature=0.7,
-                )
-            
-            # Get only the newly generated tokens by slicing from the input length
-            input_length = inputs['input_ids'].shape[1]
-            new_tokens   = outputs[0][input_length:]
-            decoded_tokens = self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip().lower()
-            self.logger.info(f"**LLM** Raw Response: {decoded_tokens}")
-
-            classification = decoded_tokens.split()[0] if decoded_tokens else "unknown"
+            self.logger.info(f"**LLM** Raw Response: {clean_response}")
+            classification = clean_response.split()[0] if clean_response else "unknown"
             self.logger.info(f"**LLM** Classification: {classification}")
             return classification
             

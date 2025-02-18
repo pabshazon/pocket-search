@@ -19,7 +19,7 @@ import logging
 import os
 from pathlib import Path
 from src.config.document_types_config import DocumentTypesConfig
-
+from src.service.ollama import OllamaService
 # HuggingFace offline config
 os.environ['HF_DATASETS_OFFLINE'] = '1'
 os.environ['TRANSFORMERS_OFFLINE'] = '1'
@@ -139,6 +139,16 @@ class ModelConfig:
     def model(self):
         if self._model is None:
             try:
+                # Special handling for Ollama models
+                if self.name.startswith("ollama://"):
+                    logger.info(f"Initializing Ollama model: {self.name}")
+                    self._model = self.model_class.from_pretrained(
+                        self.name,
+                        **self.model_params
+                    )
+                    return self._model
+
+                # Regular HuggingFace model loading
                 logger.info(f"Loading model from local path: {self.local_path}")
                 if not self.local_path.exists():
                     raise ValueError(f"Model path does not exist: {self.local_path}. Please run download_all_models() first.")
@@ -360,5 +370,18 @@ class ModelsConfig:
             "padding": True,
             "truncation": True,
             "return_tensors": "pt"
+        }
+    )
+
+    LLM_OLLAMA = ModelConfig(
+        name="ollama://phi3:medium-128k",
+        max_length=4096,
+        model_class=OllamaService,
+        model_params={
+            "options": {
+                "temperature": 0.7,
+                "top_p": 0.9,
+            },
+            "system_prompt": "You are a helpful AI assistant."
         }
     )
