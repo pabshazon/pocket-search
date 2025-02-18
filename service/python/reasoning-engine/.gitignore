@@ -33,3 +33,6 @@ __pycache__
 
 #node
 node_modules
+
+# AI Models
+models
