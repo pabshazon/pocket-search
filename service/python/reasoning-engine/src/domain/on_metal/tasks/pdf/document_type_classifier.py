@@ -1,30 +1,25 @@
 from typing import Tuple
 import logging
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch
 
 from src.config.models_config import ModelsConfig
-from src.config.device_config import DeviceConfig
+from src.config.document_types_config import DocumentTypesConfig
 
 class DocumentTypeClassifier:
-    """Classifies PDF documents into types and subtypes based on their content."""
+    """Classifies PDF documents into types and subtypes based on their content using LLM."""
     
+    TYPE_PROMPT     = DocumentTypesConfig.TYPE_PROMPT
+    SUBTYPES_MAP    = DocumentTypesConfig.SUBTYPES_MAP
+    SUBTYPE_PROMPT  = DocumentTypesConfig.SUBTYPE_PROMPT
+
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         
         try:
-            # Initialize type classifier
-            self.type_config = ModelsConfig.CLASSIFIER_DOC_TYPE
-            self.type_model = self.type_config.model
-            self.type_tokenizer = self.type_config.tokenizer
-            
-            # Initialize subtype classifier
-            self.subtype_config = ModelsConfig.CLASSIFIER_DOC_SUBTYPE
-            self.subtype_model = self.subtype_config.model
-            self.subtype_tokenizer = self.subtype_config.tokenizer
-            
-            # Both models should use the same device
-            self.device = self.type_config.device
+            self.llm_config = ModelsConfig.LLM
+            self.model      = self.llm_config.model
+            self.tokenizer  = self.llm_config.tokenizer
+            self.device     = self.llm_config.device
             
         except Exception as e:
             self.logger.error(f"Failed to initialize document classifier: {str(e)}")
@@ -36,91 +31,87 @@ class DocumentTypeClassifier:
             return "unknown", "unknown"
             
         try:
-            inputs = self.type_tokenizer(
-                text_content,
-                truncation=True,
-                max_length=512,
-                return_tensors="pt"
-            ).to(self.device)
+            doc_types_config = DocumentTypesConfig()
             
-            with torch.no_grad():
-                outputs = self.type_model(**inputs)
-                predictions = outputs.logits
+            safe_text = self._get_safe_text_for_context_size(text_content)
+            
+            type_task_prompt    = doc_types_config.get_type_prompt(safe_text)
+            classification_type = self._classify_with_llm(type_task_prompt)
+            self.logger.info(f">> Document type classification: {classification_type}")
+            
+            if classification_type not in self.SUBTYPES_MAP:
+                self.logger.info(f">> Not part of: {self.SUBTYPES_MAP}")
+                # @todo: decide what we do here @lab; for now we continue
                 
-            doc_type = self._get_document_type(predictions)
-            doc_subtype = self._get_document_subtype(predictions, doc_type)
-            
-            self.logger.info(f"Classified document as {doc_type}/{doc_subtype}")
-            return doc_type, doc_subtype
+            subtype_task_prompt = doc_types_config.get_subtype_prompt(
+                document_text=safe_text,
+                doc_type=classification_type
+            )
+            classification_subtype = self._classify_with_llm(subtype_task_prompt)
+            self.logger.info(f">> Classified document as {classification_type}/{classification_subtype}")
+            return classification_type, classification_subtype
             
         except Exception as e:
             self.logger.error(f"Error during document classification: {str(e)}")
             return "unknown", "unknown"
     
-    def _get_document_type(self, predictions) -> str:
-        """Maps model predictions to document types."""
+    def _classify_with_llm(self, prompt: str) -> str:
+        """Use LLM to classify based on prompt."""
         try:
-            predicted_class = torch.argmax(predictions).item()
-            document_types = { 
-                0: "research",
-                1: "legal",
-                2: "finance",
-                3: "hr"
-            }
-            return document_types.get(predicted_class, "unknown")
+            inputs = self.tokenizer(
+                prompt,
+                return_tensors="pt",
+            ).to(self.device)
+            
+            with torch.no_grad():
+                outputs = self.model.generate(
+                    **inputs,
+                    max_new_tokens=50,
+                    do_sample=True,
+                    temperature=0.7,
+                )
+            
+            # Get only the newly generated tokens by slicing from the input length
+            input_length = inputs['input_ids'].shape[1]
+            new_tokens   = outputs[0][input_length:]
+            decoded_tokens = self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip().lower()
+            self.logger.info(f"**LLM** Raw Response: {decoded_tokens}")
+
+            classification = decoded_tokens.split()[0] if decoded_tokens else "unknown"
+            self.logger.info(f"**LLM** Classification: {classification}")
+            return classification
+            
         except Exception as e:
-            self.logger.error(f"Error determining document type: {str(e)}")
+            self.logger.error(f"Error in LLM classification: {str(e)}")
             return "unknown"
     
-    def _get_document_subtype(self, predictions, doc_type: str) -> str:
-        """Determines document subtype based on type and model predictions."""
-        subtypes = {
-             "research": {
-                0: "research_paper",
-                1: "research_proposal",
-                2: "research_review",
-                3: "research_benchmark_tests",
-                4: "other"
-            },
-            "legal": {
-                0: "nda",
-                1: "employee_contract",
-                2: "compliance_guideline",
-                3: "company_bylaws",
-                4: "company_incorporation",
-                5: "litigation",
-                6: "patent",
-                7: "other"
-            },
-            "finance": {
-                0: "bank_document",
-                1: "financial_statement",
-                2: "financial_report",
-                3: "financial_analysis",
-                4: "financial_forecast",
-                5: "financial_report",
-                6: "other"
-            },
-            "hr": {
-                0: "cv",
-                1: "cover_letter",
-                2: "job_application",
-                3: "job_interview_guidelines",
-                4: "job_offer",
-                5: "job_post",
-                6: "other"
-            }
-        }
-        
+    def _get_safe_text_for_context_size(self, text: str) -> str:
+        """
+        Returns a safe version of the text limited to a maximum character length
+        based on the LLM configuration. Uses ContextEstimator if available to determine
+        a more fine-grained context window size.
+        """
         try:
-            probs         = torch.softmax(predictions, dim=1)[0]
-            subtype_class = torch.argmax(probs).item() % len(subtypes.get(doc_type, {}))
-            
-            type_subtypes = subtypes.get(doc_type, {})
-            if not type_subtypes:
-                return "unknown"
-                
-            return list(type_subtypes.values())[subtype_class]
+            from src.domain.on_metal.nlp.models.context_estimator import ContextEstimator
+            context_estimator = ContextEstimator()
+            model_contexts = context_estimator.estimate_model_contexts()
+            # Optionally, if your LLM configuration can be mapped to one of the keys in model_contexts,
+            # you could refine the safe context length using the estimated "approx_characters".
+            # For now, this block shows how you might leverage that information.
         except Exception as e:
-            self.logger.error(f"Error determining document subtype: {str(e)}")
-            return "unknown"
+            self.logger.warning(f"Context estimation failed: {str(e)}. Falling back to default safe length.")
+        
+        # Default approach: assume ~4 characters per token.
+        safe_max_chars = self.llm_config.max_length * 4
+
+        if len(text) <= safe_max_chars:
+            return text
+
+        safe_text = text[:safe_max_chars]
+        # Trim further to the last complete word (if possible) to avoid cutting words in half.
+        last_space = safe_text.rfind(" ")
+        if last_space != -1:
+            safe_text = safe_text[:last_space]
+        
+        self.logger.info(f"Truncated text to {len(safe_text)} characters from original {len(text)} characters.")
+        return safe_text

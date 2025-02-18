@@ -18,6 +18,7 @@ from transformers import (
 import logging
 import os
 from pathlib import Path
+from src.config.document_types_config import DocumentTypesConfig
 
 # HuggingFace offline config
 os.environ['HF_DATASETS_OFFLINE'] = '1'
@@ -38,7 +39,7 @@ class ModelConfig:
     _model: Optional[Any]           = field(default=None, init=False, repr=False)
     _tokenizer: Optional[Any]       = field(default=None, init=False, repr=False)
     _device: Optional[torch.device] = field(default=None, init=False, repr=False)
-    _is_initialized: bool = field(default=False, init=False)
+    _is_initialized: bool           = field(default=False, init=False)
 
     def __post_init__(self):
         if self.model_params is None:
@@ -66,23 +67,29 @@ class ModelConfig:
                 os.environ['TRANSFORMERS_OFFLINE'] = '0'
                 os.environ['HF_DATASETS_OFFLINE'] = '0'
                 
+                # Set up authentication token for accessing gated repositories.
+                # If the environment variable HUGGINGFACE_TOKEN is not set, use True to rely on local credentials.
+                auth_token = os.getenv("HUGGINGFACE_TOKEN") or True
+
                 try:
                     # First create the configuration with our parameters
                     config = AutoConfig.from_pretrained(
                         self.name,
+                        use_auth_token=auth_token,
                         **self.model_params
                     )
                     
                     # Download tokenizer and model
                     logger.info(f"Downloading tokenizer for {self.name}")
-                    tokenizer = AutoTokenizer.from_pretrained(self.name)
+                    tokenizer = AutoTokenizer.from_pretrained(self.name, use_auth_token=auth_token)
                     
                     model_class = self.model_class or AutoModel
                     logger.info(f"Downloading model {self.name} using class {model_class.__name__}")
                     model = model_class.from_pretrained(
                         self.name,
                         config=config,
-                        ignore_mismatched_sizes=True  # Added this parameter
+                        ignore_mismatched_sizes=True,
+                        use_auth_token=auth_token
                     )
                     
                     # Save everything to local storage
@@ -151,7 +158,7 @@ class ModelConfig:
                     config=config,
                     local_files_only=True,
                     trust_remote_code=False,
-                    ignore_mismatched_sizes=True  # Added this parameter
+                    ignore_mismatched_sizes=True
                 ).to(self.device)
                 
                 # Configure generation parameters if they exist
@@ -175,37 +182,70 @@ class ModelsConfig:
         logger.info("Starting download of all models")
         try:
             cls.SUMMARIZER.download_model()
-            cls.LAYOUT.download_model()
-            cls.CODE.download_model()
-            cls.VISION.download_model()
             cls.LLM.download_model()
-            cls.CLASSIFIER_DOC_TYPE.download_model()
-            cls.CLASSIFIER_DOC_SUBTYPE.download_model()
-            cls.CLASSIFIER_LEGAL.download_model()
+            # cls.CLASSIFIER_DOC_TYPE.download_model()
+            # cls.CLASSIFIER_DOC_SUBTYPE.download_model()
+            # cls.CLASSIFIER_LEGAL.download_model()
+            # cls.LAYOUT.download_model()
+            # cls.CODE.download_model()
+            # cls.VISION.download_model()
             
             logger.info("Successfully downloaded all models")
         except Exception as e:
             logger.error(f"Failed to download models: {str(e)}")
             raise
 
+    def _build_doc_type_params():
+        """Build model parameters for document type classifier from DocumentTypesConfig"""
+        # Extract unique document types from TYPE_PROMPT
+        doc_types = [t.strip() for t in DocumentTypesConfig.TYPE_PROMPT.split(':')[1].split('Document')[0].strip().split(',')]
+        doc_types = [t.strip() for t in doc_types[0].split('or')]  # Handle the "or other" part
+        doc_types = [t.strip() for t in ' '.join(doc_types).split()]  # Clean up and split
+        doc_types.append('unknown')  # Add unknown type
+        
+        return {
+            "num_labels": len(doc_types),
+            "problem_type": "single_label_classification",
+            "id2label": {i: label for i, label in enumerate(doc_types)},
+            "label2id": {label: i for i, label in enumerate(doc_types)}
+        }
+
+    def _build_doc_subtype_params():
+        """Build model parameters for document subtype classifier from DocumentTypesConfig"""
+        # Collect all unique subtypes
+        all_subtypes = set()
+        for subtypes in DocumentTypesConfig.SUBTYPES_MAP.values():
+            all_subtypes.update(subtypes)
+        all_subtypes.add('unknown')
+        
+        # Convert to sorted list for consistent indexing
+        subtypes_list = sorted(all_subtypes)
+        
+        return {
+            "num_labels": len(subtypes_list),
+            "problem_type": "single_label_classification",
+            "id2label": {i: label for i, label in enumerate(subtypes_list)},
+            "label2id": {label: i for i, label in enumerate(subtypes_list)}
+        }
+
     SUMMARIZER = ModelConfig(
-        name="facebook/bart-large-cnn",
+        name="facebook/bart-base",
         max_length=1024,
         model_class=AutoModelForSeq2SeqLM,
         device_priority=["mps", "cuda", "cpu"],
         model_params={
-            "forced_bos_token_id": 0,
-            "forced_eos_token_id": 2,
-            "decoder_start_token_id": 2,
-            "eos_token_id": 2,
+            # Model configuration parameters
+            "architectures": ["BartForConditionalGeneration"],
             "pad_token_id": 1,
             "bos_token_id": 0,
-            "num_beams": 4,
-            "length_penalty": 2.0,
-            "early_stopping": True,
-            "no_repeat_ngram_size": 3,
+            "eos_token_id": 2,
+            "decoder_start_token_id": 2,
+            "forced_eos_token_id": 2,
+            
+            # Generation configuration parameters
             "max_length": 142,
             "min_length": 56,
+            "length_penalty": 2.0,
             "max_new_tokens": 1024,
             "do_sample": False
         }
@@ -228,6 +268,7 @@ class ModelsConfig:
     #         "truncation": True
     #     }
     # )
+
 
     # Document Layout Analysis
     LAYOUT = ModelConfig(
@@ -262,40 +303,44 @@ class ModelsConfig:
         }
     )
 
-    # Large Language Model Decoder
-    LLM = ModelConfig(
-        name="TinyLlama/TinyLlama-1.1B-Chat-v1.0",  # Much smaller Llama-based model
+    # LLM = ModelConfig(
+    #     name="meta-llama/Llama-3.2-1B-Instruct",
+    #     max_length=2048,
+    #     model_class=AutoModelForCausalLM,
+    #     model_params={
+    #         "padding": True,
+    #         "return_tensors": "pt",
+    #         "use_cache": True
+    #     }
+    # )
+
+    LLM_LLAMA = ModelConfig(
+        name="meta-llama/Llama-3.2-1B-Instruct",
         max_length=2048,
         model_class=AutoModelForCausalLM,
         model_params={
             "padding": True,
             "return_tensors": "pt",
-            "trust_remote_code": True,
             "use_cache": True
         }
     )
 
+    LLM = ModelConfig(
+        name="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+        max_length=2048,
+        model_class=AutoModelForCausalLM,
+        model_params={
+            "padding": True,
+            "return_tensors": "pt",
+            "use_cache": True
+        }
+    )
     # Document Type Classifier
     CLASSIFIER_DOC_TYPE = ModelConfig(
         name="allenai/longformer-base-4096",
         max_length=4096,
         model_class=AutoModelForSequenceClassification,
-        model_params={
-            "num_labels": 4,  # research, legal, finance, hr
-            "problem_type": "single_label_classification",
-            "id2label": {
-                0: "research",
-                1: "legal",
-                2: "finance",
-                3: "hr"
-            },
-            "label2id": {
-                "research": 0,
-                "legal": 1,
-                "finance": 2,
-                "hr": 3
-            }
-        }
+        model_params=_build_doc_type_params()
     )
 
     # Document Subtype Classifier
@@ -303,30 +348,7 @@ class ModelsConfig:
         name="allenai/longformer-base-4096",
         max_length=4096,
         model_class=AutoModelForSequenceClassification,
-        model_params={
-            "num_labels": 8,  # Maximum number of subtypes across all categories
-            "problem_type": "single_label_classification",
-            "id2label": {
-                0: "research_paper",
-                1: "nda",
-                2: "bank_document",
-                3: "cv",
-                4: "research_proposal",
-                5: "employee_contract",
-                6: "financial_statement",
-                7: "cover_letter"
-            },
-            "label2id": {
-                "research_paper": 0,
-                "nda": 1,
-                "bank_document": 2,
-                "cv": 3,
-                "research_proposal": 4,
-                "employee_contract": 5,
-                "financial_statement": 6,
-                "cover_letter": 7
-            }
-        }
+        model_params=_build_doc_subtype_params()
     )
 
     # Legal Document Classifier
