@@ -7,15 +7,14 @@ import logging
 class TasksController:
     def consume_tasks_table(self):
         try:
+            logging.debug("> TASK: Consuming tasks SQLite table...")
             tasks = Task.fetch_all_tasks()
             for task in tasks:
                 if task.name == "Analyze-new":
                     hnode = HNode.fetch_by_hyper_node_id(task.hyper_node_id)
                     if hnode.is_file == 1:
-                        print("File")
                         Analyzer.analyze_file(hnode)
                     elif hnode.is_folder == 1:
-                        print("Folder")
                         Analyzer.analyze_folder(hnode)
                     else:
                         print("Unknown")

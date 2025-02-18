@@ -2,120 +2,137 @@ import logging
 from typing import List
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 import torch
-from src.domain.on_metal.tasks.pdf.analyzers.semantic_analyzer import SemanticChunk
-from src.config.models_config import ModelsConfig
-from src.config.device_config import DeviceConfig
+import math
+import time
 
-logging.basicConfig(level=logging.INFO)
+from src.domain.on_metal.nlp.models.context_estimator   import ContextEstimator
+from src.config.models_config                           import ModelsConfig
+from src.config.device_config                           import DeviceConfig
+
+logging.basicConfig(
+    level=logging.INFO,  # @todo abstract from env variable
+    format='%(message)s'
+)
 logger = logging.getLogger(__name__)
 
 
 class PdfSummarizer:
     def __init__(self):
         try:
-            logger.info(f"Initializing PdfSummarizer")
-            config = ModelsConfig.SUMMARIZER
-            self.device = DeviceConfig.get_device(config.device_priority)
-            self.model_name = config.name
-            
-            try:
-                self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-                self.model = AutoModelForSeq2SeqLM.from_pretrained(self.model_name).to(self.device)
-            except Exception as e:
-                logger.error(f"Failed to load model or tokenizer: {str(e)}", exc_info=True)
-                raise RuntimeError(f"Model initialization failed: {str(e)}")
-                
-            self.max_chunk_length = config.max_length
-            self.max_summary_length = 150
-            logger.info(f"PdfSummarizer initialized successfully on device: {self.device}")
+            logger.debug(f"> Initializing PdfSummarizer")
+            self.config             = ModelsConfig.SUMMARIZER
+            self.model              = self.config.model
+            self.tokenizer          = self.config.tokenizer
+            self.device             = self.config.device
+            self.max_chunk_length   = self.config.max_length
+            self.max_summary_length = 250
         except Exception as e:
             logger.error(f"Failed to initialize PdfSummarizer: {str(e)}", exc_info=True)
             raise
 
-    def summarize(self, semantic_chunks: List[SemanticChunk]) -> str:
-        if not semantic_chunks:
-            logger.warning("Empty semantic chunks provided")
+    def summarize(self, text_content: str, min_num_of_chunks: int = 1) -> str:
+        if not text_content:
+            logger.warning("Empty text to summarize provided")
             return ""
             
         try:
-            logger.info(f"Starting summarization of {len(semantic_chunks)} semantic chunks")
-            chunk_summaries = []
+            start_time = time.time()
+            logger.debug(f"Starting summarization of {len(text_content)} characters")
             
-            for i, chunk in enumerate(semantic_chunks, 1):
-                # Convert dict to SemanticChunk if necessary
-                if isinstance(chunk, dict):
-                    try:
-                        # Provide default values for required fields if missing
-                        default_values = {
-                            'confidence': 1.0,
-                            'page_num': 1,
-                            'bbox': [0, 0, 0, 0],
-                            'relationships': [],
-                            'content': '',
-                            'chunk_type': 'paragraph'
-                        }
-                        # Merge defaults with provided data
-                        chunk_data = {**default_values, **chunk}
-                        # Filter out unexpected arguments
-                        valid_chunk_data = {
-                            k: v for k, v in chunk_data.items() 
-                            if k in SemanticChunk.__annotations__
-                        }
-                        chunk = SemanticChunk(**valid_chunk_data)
-                    except Exception as e:
-                        logger.error(f"Failed to convert dict to SemanticChunk at index {i}: {str(e)}")
-                        continue
-
-                if not isinstance(chunk, SemanticChunk):
-                    logger.error(f"Invalid chunk type at index {i}: {type(chunk)}")
-                    continue
-                    
-                if chunk.chunk_type in ["paragraph", "heading"]:
-                    try:
-                        logger.debug(f"Processing chunk {i}/{len(semantic_chunks)} of type: {chunk.chunk_type}")
-                        summary = self._summarize_chunk(chunk.content)
-                        if summary:
-                            chunk_summaries.append(summary)
-                    except Exception as e:
-                        logger.error(f"Error processing chunk {i}: {str(e)}", exc_info=True)
-                        continue
+            context_estimator = ContextEstimator()
+            model_contexts    = context_estimator.estimate_model_contexts()
+            bart_context      = model_contexts["models"]["BART"]
             
-            if chunk_summaries:
-                logger.info(f"Generated {len(chunk_summaries)} chunk summaries, creating final summary")
-                try:
-                    final_summary = self._create_final_summary(chunk_summaries)
-                    logger.info("Final summary generated successfully")
-                    return final_summary
-                except Exception as e:
-                    logger.error(f"Failed to create final summary: {str(e)}", exc_info=True)
-                    return " ".join(chunk_summaries[:3])  # Fallback: return first 3 chunk summaries
+            content_num_tokens = len(self.tokenizer.encode(text_content))
+            max_safe_tokens = self.max_chunk_length
             
-            logger.warning("No valid chunks to summarize, returning empty string")
-            return ""
+            logger.debug(f"Text contains {content_num_tokens} tokens")
+            num_chunks = max(min_num_of_chunks, math.ceil(content_num_tokens / max_safe_tokens))
             
+            logger.debug(f"Split text into {num_chunks} chunks based on token count")
+            
+            chunking_start_time = time.time()
+            chunks = []
+            current_chunk = ""
+            current_tokens = 0
+            words = text_content.split()
+            
+            for word in words:
+                word_tokens = len(self.tokenizer.encode(word))
+                if current_tokens + word_tokens > max_safe_tokens:
+                    chunks.append(current_chunk.strip())
+                    current_chunk = word
+                    current_tokens = word_tokens
+                else:
+                    current_chunk += " " + word if current_chunk else word
+                    current_tokens += word_tokens
+            
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+                
+            chunking_time = time.time() - chunking_start_time
+            logger.debug(f"Text chunking took {chunking_time:.2f}s")
+            
+            macro_chunks_summaries  = []
+            total_tokenization_time = 0
+            total_generation_time   = 0
+            
+            for i in range(num_chunks):
+                start_idx   = i * max_safe_tokens
+                end_idx     = min((i + 1) * max_safe_tokens, len(text_content))
+                chunk_text  = text_content[start_idx:end_idx]
+                
+                chunk_summary, tok_time, gen_time = self._summarize_chunk(chunk_text)
+                total_tokenization_time += tok_time
+                total_generation_time += gen_time
+                
+                if chunk_summary:
+                    macro_chunks_summaries.append(chunk_summary)
+            
+            if not macro_chunks_summaries:
+                logger.warning("No valid summaries generated from macro chunks")
+                return ""
+            
+            final_summary, final_tok_time, final_gen_time = self._create_final_summary(macro_chunks_summaries)
+            total_time = time.time() - start_time
+            
+            logger.debug(f"Summarization Performance Metrics:")
+            logger.debug(f"- Total time: {total_time:.2f}s")
+            logger.debug(f"- Chunking time: {chunking_time:.2f}s")
+            logger.debug(f"- Total tokenization time: {total_tokenization_time + final_tok_time:.2f}s")
+            logger.debug(f"- Total generation time: {total_generation_time + final_gen_time:.2f}s")
+            logger.debug(f"- Average tokenization time per chunk: {total_tokenization_time/num_chunks:.2f}s")
+            logger.debug(f"- Average generation time per chunk: {total_generation_time/num_chunks:.2f}s")
+            logger.debug(f"Generated final summary of {len(final_summary)} characters")
+            logger.debug(f"Final summary: {final_summary}")
+            
+            return final_summary
+                
         except Exception as e:
             logger.error(f"Unexpected error in summarize method: {str(e)}", exc_info=True)
             return ""
     
-    def _summarize_chunk(self, text: str) -> str:
+    def _summarize_chunk(self, text: str) -> tuple[str, float, float]:
         if not isinstance(text, str):
             logger.error(f"Invalid input type for summarization: {type(text)}")
-            return ""
+            return "", 0.0, 0.0
             
         if not text.strip():
             logger.warning("Empty text provided for summarization")
-            return ""
+            return "", 0.0, 0.0
             
         try:
-            logger.debug(f"Summarizing chunk of length: {len(text)} characters")
+            tok_start = time.time()
             inputs = self.tokenizer(
                 text,
                 max_length=self.max_chunk_length,
                 truncation=True,
                 return_tensors="pt"
             ).to(self.device)
+            tokenization_time = time.time() - tok_start
             
             try:
+                gen_start = time.time()
                 with torch.no_grad():
                     summary_ids = self.model.generate(
                         inputs["input_ids"],
@@ -125,32 +142,33 @@ class PdfSummarizer:
                         early_stopping=True,
                         no_repeat_ngram_size=3
                     )
+                generation_time = time.time() - gen_start
                 
                 summary = self.tokenizer.decode(summary_ids[0], skip_special_tokens=True)
                 if not summary.strip():
                     logger.warning("Generated empty summary")
-                    return ""
+                    return "", tokenization_time, generation_time
                     
-                logger.debug(f"Successfully generated summary of length: {len(summary)} characters")
-                return summary
+                logger.debug(f"Chunk processing times - Tokenization: {tokenization_time:.2f}s, Generation: {generation_time:.2f}s")
+                return summary, tokenization_time, generation_time
                 
             except torch.cuda.OutOfMemoryError as e:
                 logger.error("CUDA out of memory error", exc_info=True)
                 torch.cuda.empty_cache()
-                return text[:self.max_summary_length]  # Fallback: return truncated original text
+                return text[:self.max_summary_length], 0.0, 0.0  # Fallback
                 
             except Exception as e:
                 logger.error(f"Error in model generation: {str(e)}", exc_info=True)
-                return ""
+                return "", tokenization_time, 0.0
                 
         except Exception as e:
             logger.error(f"Error in chunk summarization: {str(e)}", exc_info=True)
-            return ""
+            return "", 0.0, 0.0
     
-    def _create_final_summary(self, chunk_summaries: List[str]) -> str:
+    def _create_final_summary(self, chunk_summaries: List[str]) -> tuple[str, float, float]:
         if not chunk_summaries:
             logger.warning("Empty chunk summaries provided")
-            return ""
+            return "", 0.0, 0.0
             
         try:
             logger.debug(f"Creating final summary from {len(chunk_summaries)} chunk summaries")
@@ -158,4 +176,4 @@ class PdfSummarizer:
             return self._summarize_chunk(combined_summary)
         except Exception as e:
             logger.error(f"Error creating final summary: {str(e)}", exc_info=True)
-            return chunk_summaries[0] if chunk_summaries else ""  # Fallback: return first chunk summary
+            return chunk_summaries[0] if chunk_summaries else "", 0.0, 0.0

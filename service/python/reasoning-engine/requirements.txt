@@ -10,4 +10,4 @@ PyMuPDF
 PyPDF2
 opencv-python
 Pillow
-
+protobuf

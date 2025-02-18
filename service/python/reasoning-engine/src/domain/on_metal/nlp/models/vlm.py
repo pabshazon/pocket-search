@@ -4,16 +4,19 @@ from transformers import ViltProcessor, ViltForImageAndTextRetrieval
 import numpy as np
 from PIL import Image
 import logging
+from src.config.device_config import DeviceConfig
+from src.config.models_config import ModelsConfig
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class VisualLanguageModel:
     def __init__(self):
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.processor = ViltProcessor.from_pretrained("dandelin/vilt-b32-finetuned-vqa")
-        self.model = ViltForImageAndTextRetrieval.from_pretrained(
-            "dandelin/vilt-b32-finetuned-vqa"
+        self.config     = ModelsConfig.VISION
+        self.device     = DeviceConfig.get_device(self.config.device_priority)
+        self.processor  = ViltProcessor.from_pretrained(self.config.name)
+        self.model      = ViltForImageAndTextRetrieval.from_pretrained(
+            self.config.name
         ).to(self.device)
         
         # Predefined questions for comprehensive image analysis

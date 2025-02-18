@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from transformers import LayoutLMv3Processor, LayoutLMv3Model
 import torch
 from src.domain.on_metal.tasks.pdf.extractors.text_extractor import TextBlock
+from src.config.device_config import DeviceConfig
+from src.config.models_config import ModelsConfig
 
 @dataclass
 class SemanticChunk:
@@ -15,12 +17,13 @@ class SemanticChunk:
 
 class SemanticAnalyzer:
     def __init__(self):
-        self.device     = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.processor  = LayoutLMv3Processor.from_pretrained("microsoft/layoutlmv3-base")
-        self.model      = LayoutLMv3Model.from_pretrained("microsoft/layoutlmv3-base").to(self.device)
-        print("Semantic analyzer initialized.++")
+        self.device     = DeviceConfig.get_device(ModelsConfig.LAYOUT.device_priority)
+        self.processor  = LayoutLMv3Processor.from_pretrained(ModelsConfig.LAYOUT.name)
+        self.model      = LayoutLMv3Model.from_pretrained(ModelsConfig.LAYOUT.name).to(self.device)
+        print("Semantic analyzer initialized.")
         
-    def analyze(self, text_blocks: List[TextBlock], layout_info: Dict[str, Any]) -> List[SemanticChunk]:
+    # def analyze(self, text_blocks: List[TextBlock], layout_info: Dict[str, Any]) -> List[SemanticChunk]:
+    def analyze(self, text: List[TextBlock], layout_info: Dict[str, Any]) -> List[SemanticChunk]:
         chunks = []
         
         # Process blocks in batches for GPU efficiency
