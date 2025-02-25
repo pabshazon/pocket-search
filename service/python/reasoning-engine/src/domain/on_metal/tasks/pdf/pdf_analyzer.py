@@ -7,7 +7,7 @@ import logging
 from src.domain.on_metal.tasks.pdf.extractors.text_extractor    import PdfTextExtractor
 from src.domain.on_metal.tasks.pdf.summarizer                   import PdfSummarizer
 from src.domain.on_metal.tasks.pdf.document_type_classifier     import DocumentTypeClassifier
-from src.domain.on_metal.nlp.models.context_estimator           import ContextEstimator
+from src.domain.on_metal.nlp.model.context_estimator           import ContextEstimator
 
 
 @dataclass

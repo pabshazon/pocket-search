@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 from PIL import Image
 import io
-from src.domain.on_metal.nlp.models.vlm import VisualLanguageModel
+from src.domain.on_metal.nlp.model.vlm import VisualLanguageModel
 
 class PdfImageExtractor:
     def __init__(self):
