@@ -6,8 +6,9 @@ pydantic
 transformers>=4.30.0
 transformers[torch]
 datasets
-PyMuPDF
-PyPDF2
-opencv-python
-Pillow
-protobuf
+#PyMuPDF
+#PyPDF2
+#opencv-python
+#Pillow
+#protobuf
+docling

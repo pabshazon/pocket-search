@@ -1,7 +1,7 @@
 from typing import Dict, Any
 
-from src.service.database.models.hnode          import HNode
-from src.domain.on_metal.tasks.pdf.pdf_analyzer import PdfAnalyzer
+from src.service.database.models.hnode     import HNode
+from src.domain.on_metal.file.pdf_analyzer import PdfAnalyzer
 
 class Analyzer:
     @staticmethod
