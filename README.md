@@ -1,4 +1,4 @@
-# Tauri + Python + React with Typescript
+# A desktop crossplatform app: Tauri + Python + React with Typescript App to perform semantic search on top of your FS
 
 ### Development
 
