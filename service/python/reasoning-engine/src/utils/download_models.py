@@ -2,7 +2,7 @@ import logging
 import os
 
 from docling.utils.model_downloader import download_models as download_docling_models
-from huggingface_hub import login
+from huggingface_hub                import login
 
 from src.config.models_config import ModelsConfig, ModelConfig
 
