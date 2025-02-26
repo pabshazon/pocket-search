@@ -1,6 +1,6 @@
 import {useState} from "react";
 import {invoke as invokeRust} from "@tauri-apps/api/core";
-import {open} from "@tauri-apps/api/dialog";
+import {open} from "@tauri-apps/plugin-dialog";
 
 function ScanPage() {
     const [folderPath, setFolderPath] = useState("");

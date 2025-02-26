@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use serde::Serialize;
+use std::collections::HashMap;
 
 /// Represents an extracted entity from the file content.
 #[derive(Debug, Clone, Serialize)]
@@ -34,4 +34,4 @@ pub struct SemanticMetadata {
     pub extracted_entities: Vec<ExtractedEntity>,
     pub semantic_chunks: Vec<SemanticChunk>,
     pub graph_nodes: Vec<GraphNode>,
-} 
+}

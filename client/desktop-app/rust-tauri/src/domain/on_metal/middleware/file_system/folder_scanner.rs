@@ -1,16 +1,16 @@
-use std::fs;
-use std::path::Path;
+use anyhow::Result;
+use libc::{lstat, stat};
 use std::ffi::CString;
+use std::fs;
 use std::os::unix::fs::MetadataExt;
 #[cfg(target_os = "windows")]
 use std::os::windows::fs::MetadataExt;
-use libc::{stat, lstat};
-use anyhow::Result;
+use std::path::Path;
 
 use crate::domain::on_metal::middleware::file_system::entry_type::EntryType;
-use crate::domain::on_metal::middleware::file_system::os_metadata::OsMetadata;
 use crate::domain::on_metal::middleware::file_system::file_system_entry::FileSystemEntry;
 use crate::domain::on_metal::middleware::file_system::folder_scannable::FolderScannable;
+use crate::domain::on_metal::middleware::file_system::os_metadata::OsMetadata;
 
 pub struct FolderScanner {
     pub folder_path: String,
@@ -32,33 +32,33 @@ impl FolderScanner {
     }
 
     fn get_os_metadata(path: &Path) -> Option<OsMetadata> {
-        let c_path    = CString::new(path.to_str()?).ok()?;
+        let c_path = CString::new(path.to_str()?).ok()?;
         let mut stat_buf: stat = unsafe { std::mem::zeroed() };
         if unsafe { lstat(c_path.as_ptr(), &mut stat_buf) } == 0 {
             #[cfg(target_os = "macos")]
             {
                 Some(OsMetadata {
-                    device_id:          stat_buf.st_dev as u64,
-                    hard_links:         stat_buf.st_nlink as u64,
-                    user_id:            stat_buf.st_uid as u32,
-                    group_id:           stat_buf.st_gid as u32,
-                    total_size:         stat_buf.st_size,
-                    block_size:         stat_buf.st_blksize as i64,
-                    blocks_allocated:   stat_buf.st_blocks as i64,
-                    atime:              libc::timespec {
-                        tv_sec:  stat_buf.st_atime as i64,
+                    device_id: stat_buf.st_dev as u64,
+                    hard_links: stat_buf.st_nlink as u64,
+                    user_id: stat_buf.st_uid as u32,
+                    group_id: stat_buf.st_gid as u32,
+                    total_size: stat_buf.st_size,
+                    block_size: stat_buf.st_blksize as i64,
+                    blocks_allocated: stat_buf.st_blocks as i64,
+                    atime: libc::timespec {
+                        tv_sec: stat_buf.st_atime as i64,
                         tv_nsec: stat_buf.st_atime_nsec as i64,
                     },
-                    mtime:              libc::timespec {
-                        tv_sec:  stat_buf.st_mtime as i64,
+                    mtime: libc::timespec {
+                        tv_sec: stat_buf.st_mtime as i64,
                         tv_nsec: stat_buf.st_mtime_nsec as i64,
                     },
-                    ctime:              libc::timespec {
-                        tv_sec:  stat_buf.st_ctime as i64,
+                    ctime: libc::timespec {
+                        tv_sec: stat_buf.st_ctime as i64,
                         tv_nsec: stat_buf.st_ctime_nsec as i64,
                     },
-                    birthtime:          libc::timespec {
-                        tv_sec:  stat_buf.st_birthtime as i64,
+                    birthtime: libc::timespec {
+                        tv_sec: stat_buf.st_birthtime as i64,
                         tv_nsec: stat_buf.st_birthtime_nsec as i64,
                     },
                 })
@@ -76,7 +76,10 @@ impl FolderScanner {
                 })
             }
         } else {
-            println!("Failed to retrieve detailed inode information for path: {:?}", path);
+            println!(
+                "Failed to retrieve detailed inode information for path: {:?}",
+                path
+            );
             None
         }
     }
@@ -84,9 +87,9 @@ impl FolderScanner {
 
 impl FolderScannable for FolderScanner {
     fn scan(&self) -> Result<(Vec<FileSystemEntry>, Vec<FileSystemEntry>), String> {
-        let mut file_entries      = Vec::new();
+        let mut file_entries = Vec::new();
         let mut directory_entries = Vec::new();
-        let path                  = Path::new(&self.folder_path);
+        let path = Path::new(&self.folder_path);
 
         if !path.is_dir() {
             return Err("Provided path is not a directory".to_string());
@@ -96,9 +99,9 @@ impl FolderScannable for FolderScanner {
         let root_entry = self.create_file_system_entry(&path)?;
         directory_entries.push(root_entry);
 
-        let read_dir = fs::read_dir(path)
-            .map_err(|e| format!("Failed to read directory: {}", e))?;
-        
+        let read_dir =
+            fs::read_dir(path).map_err(|e| format!("Failed to read directory: {}", e))?;
+
         for entry in read_dir {
             let entry = entry.map_err(|e| e.to_string())?;
             let path_buf = entry.path();
@@ -121,8 +124,7 @@ impl FolderScannable for FolderScanner {
 // Helper function to create a FileSystemEntry
 impl FolderScanner {
     fn create_file_system_entry(&self, path: &Path) -> Result<FileSystemEntry, String> {
-        let metadata = fs::metadata(path)
-            .map_err(|e| e.to_string())?;
+        let metadata = fs::metadata(path).map_err(|e| e.to_string())?;
 
         let entry_type = if path.is_file() {
             EntryType::File
@@ -152,4 +154,4 @@ impl FolderScanner {
             semantic_metadata: None,
         })
     }
-} 
+}

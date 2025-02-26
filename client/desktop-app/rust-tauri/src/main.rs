@@ -5,11 +5,11 @@ mod domain;
 mod service;
 
 use command::initialize_app::{init_db, run_db_migrations};
-use command::scan_folder_and_queue_tasks::scan_folder_and_queue_tasks;
 use command::perform_tasks::perform_tasks;
-use tauri::Manager;
-use std::process::{Command, Child};
+use command::scan_folder_and_queue_tasks::scan_folder_and_queue_tasks;
+use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
+use tauri::Manager;
 use tokio;
 
 struct FastAPIServer {
@@ -45,6 +45,8 @@ fn main() {
     let fastapi_server = Arc::new(Mutex::new(FastAPIServer::new()));
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .setup(move |app| {
             // DB Init and migrations
             let path = app.path().data_dir();

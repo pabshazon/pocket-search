@@ -1,16 +1,18 @@
-use sqlx::SqlitePool;
-use anyhow::Result;
-use crate::domain::on_metal::middleware::file_system::file_system_entry::FileSystemEntry;
-use serde_json;
-use tauri::{AppHandle, Manager};
 use crate::domain::on_metal::middleware::file_system::entry_type::EntryType;
-use sqlx::{QueryBuilder, Row};
+use crate::domain::on_metal::middleware::file_system::file_system_entry::FileSystemEntry;
+use anyhow::Result;
+use serde_json;
 use serde_json::json;
+use sqlx::SqlitePool;
+use sqlx::{QueryBuilder, Row};
+use tauri::{AppHandle, Manager};
 
 fn build_db_url(app_handle: &AppHandle) -> Result<String, String> {
-    let app_data_dir = app_handle.path().app_data_dir()
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
         .map_err(|e| format!("Failed to get app data directory: {}", e))?;
-    
+
     if cfg!(debug_assertions) {
         println!(">> app_data_dir: {:?}", app_data_dir);
     }
@@ -29,7 +31,7 @@ async fn get_db_pool(app_handle: &AppHandle) -> Result<SqlitePool, String> {
 pub async fn store_file_system_entries(
     app_handle: &AppHandle,
     entries: &[FileSystemEntry],
-    task_trigger_extensions: &[&str]
+    task_trigger_extensions: &[&str],
 ) -> Result<(), String> {
     // Establish database connection.
     let pool = get_db_pool(app_handle).await?;
@@ -66,7 +68,7 @@ pub async fn store_file_system_entries(
             cs_what_is_fs_file_about,
             cs_hnode_title,
             cs_hnode_summary
-        ) "
+        ) ",
     );
 
     query_builder.push_values(file_and_folder_entries_clone, |mut b, entry| {
@@ -82,15 +84,12 @@ pub async fn store_file_system_entries(
             .unwrap_or(path);
 
         // Extract file extension if available.
-        let fs_file_extension = path_obj
-            .extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("");
+        let fs_file_extension = path_obj.extension().and_then(|s| s.to_str()).unwrap_or("");
 
         // Determine file vs folder based on EntryType.
         let (is_folder, is_file) = match entry.entry_type {
             EntryType::Directory => (1, 0),
-            EntryType::File      => (0, 1),
+            EntryType::File => (0, 1),
         };
         let is_inside_fs_file = 0; // Default value
         let parent_hyper_node_id: Option<&str> = None;
@@ -106,21 +105,24 @@ pub async fn store_file_system_entries(
         // Serialize OS metadata to JSON.
         let (cs_what_is_fs_folder_about, cs_what_is_fs_file_about) = match entry.entry_type {
             EntryType::Directory => (
-                entry.os_metadata
+                entry
+                    .os_metadata
                     .as_ref()
                     .and_then(|m| serde_json::to_string(m).ok()),
                 None,
             ),
             EntryType::File => (
                 None,
-                entry.os_metadata
+                entry
+                    .os_metadata
                     .as_ref()
                     .and_then(|m| serde_json::to_string(m).ok()),
             ),
         };
 
         // Serialize semantic metadata, if any.
-        let cs_hnode_summary = entry.semantic_metadata
+        let cs_hnode_summary = entry
+            .semantic_metadata
             .as_ref()
             .and_then(|m| serde_json::to_string(m).ok());
 
@@ -135,23 +137,23 @@ pub async fn store_file_system_entries(
             format!("{}::{}", path, fs_file_name)
         };
 
-        b.push_bind(hnode_name)                      // name
-         .push_bind(parent_hyper_node_id)            // parent_hyper_node_id
-         .push_bind(is_folder)                       // is_folder
-         .push_bind(is_file)                         // is_file
-         .push_bind(is_inside_fs_file)               // is_inside_fs_file
-         .push_bind(path)                            // fs_full_path
-         .push_bind(fs_file_name)                    // fs_file_name
-         .push_bind(fs_inode as i64)                 // fs_inode
-         .push_bind(fs_file_extension)               // fs_file_extension
-         .push_bind(entry.file_size as i64)          // fs_file_size
-         .push_bind(fs_device_id as i64)                    // fs_device_id
-         .push_bind(fs_user_id as i64)                      // fs_user_id
-         .push_bind(fs_group_id as i64)                     // fs_group_id
-         .push_bind(cs_what_is_fs_folder_about)      // cs_what_is_fs_folder_about
-         .push_bind(cs_what_is_fs_file_about)        // cs_what_is_fs_file_about
-         .push_bind(cs_hnode_title)                  // cs_hnode_title
-         .push_bind(cs_hnode_summary);               // cs_hnode_summary
+        b.push_bind(hnode_name) // name
+            .push_bind(parent_hyper_node_id) // parent_hyper_node_id
+            .push_bind(is_folder) // is_folder
+            .push_bind(is_file) // is_file
+            .push_bind(is_inside_fs_file) // is_inside_fs_file
+            .push_bind(path) // fs_full_path
+            .push_bind(fs_file_name) // fs_file_name
+            .push_bind(fs_inode as i64) // fs_inode
+            .push_bind(fs_file_extension) // fs_file_extension
+            .push_bind(entry.file_size as i64) // fs_file_size
+            .push_bind(fs_device_id as i64) // fs_device_id
+            .push_bind(fs_user_id as i64) // fs_user_id
+            .push_bind(fs_group_id as i64) // fs_group_id
+            .push_bind(cs_what_is_fs_folder_about) // cs_what_is_fs_folder_about
+            .push_bind(cs_what_is_fs_file_about) // cs_what_is_fs_file_about
+            .push_bind(cs_hnode_title) // cs_hnode_title
+            .push_bind(cs_hnode_summary); // cs_hnode_summary
     });
 
     // Add RETURNING clause to capture hyper_node_id
@@ -172,7 +174,7 @@ pub async fn store_file_system_entries(
             cs_what_is_fs_file_about = excluded.cs_what_is_fs_file_about,
             cs_hnode_title = excluded.cs_hnode_title,
             cs_hnode_summary = excluded.cs_hnode_summary
-        RETURNING id"
+        RETURNING id",
     );
 
     let query = query_builder.build();
@@ -192,7 +194,8 @@ pub async fn store_file_system_entries(
 
     // Use the original file_and_folder_entries for further processing
     // @todo important to extract this tasks from here.
-    let task_entries: Vec<&FileSystemEntry> = file_and_folder_entries.into_iter()
+    let task_entries: Vec<&FileSystemEntry> = file_and_folder_entries
+        .into_iter()
         .filter(|entry| {
             if entry.entry_type == EntryType::Directory {
                 return true;
@@ -210,9 +213,8 @@ pub async fn store_file_system_entries(
         let task_description = format!("Perform the first analysis for the FS Entry.");
 
         // Use QueryBuilder to check if the task already exists
-        let mut existing_task_query_builder = QueryBuilder::<sqlx::Sqlite>::new(
-            "SELECT COUNT(*) as count FROM task WHERE name = "
-        );
+        let mut existing_task_query_builder =
+            QueryBuilder::<sqlx::Sqlite>::new("SELECT COUNT(*) as count FROM task WHERE name = ");
 
         existing_task_query_builder
             .push_bind(task_name.clone())
@@ -234,7 +236,6 @@ pub async fn store_file_system_entries(
             .try_get("count")
             .unwrap_or(0);
 
-
         if existing_task_count > 0 {
             println!("Repeated the demand for a pending task");
             continue;
@@ -247,20 +248,21 @@ pub async fn store_file_system_entries(
                 hyper_node_id,
                 priority,
                 status
-            ) "
+            ) ",
         );
 
         task_query_builder.push_values(std::iter::once(entry), |mut b, _| {
             b.push_bind(task_name.clone())
-             .push_bind(task_description.clone())
-             .push_bind(hyper_node_id.as_str()) // Use a reference to the hyper_node_id
-             .push_bind(0) // priority
-             .push_bind("pending"); // status
+                .push_bind(task_description.clone())
+                .push_bind(hyper_node_id.as_str()) // Use a reference to the hyper_node_id
+                .push_bind(0) // priority
+                .push_bind("pending"); // status
         });
 
         let task_query = task_query_builder.build();
 
-        task_query.execute(&pool)
+        task_query
+            .execute(&pool)
             .await
             .map_err(|e| format!("Failed to insert task for entry: {}", e))?;
     }

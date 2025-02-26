@@ -4,4 +4,4 @@ use serde::Serialize;
 pub enum EntryType {
     File,
     Directory,
-} 
+}

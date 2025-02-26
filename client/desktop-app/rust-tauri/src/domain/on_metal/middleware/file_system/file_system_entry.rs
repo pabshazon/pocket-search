@@ -12,4 +12,4 @@ pub struct FileSystemEntry {
     pub os_metadata: Option<OsMetadata>,
     /// Enriched semantic metadata derived from the file content.
     pub semantic_metadata: Option<SemanticMetadata>,
-} 
+}

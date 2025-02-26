@@ -81,7 +81,6 @@ class DocumentTypeClassifier:
         a more fine-grained context window size.
         """
         try:
-            from src.domain.on_metal.nlp.model.context_estimator import ContextEstimator
             context_estimator = ContextEstimator()
             model_contexts = context_estimator.estimate_model_contexts()
             # Optionally, if your LLM configuration can be mapped to one of the keys in model_contexts,

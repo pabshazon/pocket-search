@@ -1,14 +1,16 @@
-use tauri::{command, AppHandle, Manager};
 use anyhow::Result;
 use sqlx::sqlite::SqlitePool;
 use std::env;
+use tauri::{command, AppHandle, Manager};
 use tokio::runtime::Runtime;
 
 #[command]
 pub fn init_db(app_handle: &AppHandle) -> Result<(), String> {
     println!("Initializing database...");
 
-    let app_data_dir = app_handle.path().app_data_dir()
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
         .map_err(|e| format!("Failed to get app data directory: {}", e))?;
 
     if cfg!(debug_assertions) {
@@ -35,10 +37,16 @@ pub fn run_db_migrations(app_handle: &AppHandle) -> Result<(), String> {
     println!("Initializing db migrations...");
 
     // @todo This is a hack to get the migrations path. Move it to a config file that can work for dev and prod.
-    let pocket_github_path: std::result::Result<String, std::env::VarError> = env::var("POCKET_GITHUB_PATH");
-    let migrations_path: String = format!("{}client/desktop-app/db_migrations", pocket_github_path.unwrap());
+    let pocket_github_path: std::result::Result<String, std::env::VarError> =
+        env::var("POCKET_GITHUB_PATH");
+    let migrations_path: String = format!(
+        "{}client/desktop-app/db_migrations",
+        pocket_github_path.unwrap()
+    );
 
-    let app_data_dir = app_handle.path().app_data_dir()
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
         .map_err(|e| format!("Failed to get app data directory: {}", e))?;
 
     if cfg!(debug_assertions) {
@@ -56,8 +64,8 @@ pub fn run_db_migrations(app_handle: &AppHandle) -> Result<(), String> {
         println!(">> DB migrations path: {:?}", migrations_path);
     }
 
-    let tokio_runtime = Runtime::new()
-        .map_err(|e| format!("Failed to create Tokio runtime: {}", e))?;
+    let tokio_runtime =
+        Runtime::new().map_err(|e| format!("Failed to create Tokio runtime: {}", e))?;
 
     tokio_runtime.block_on(async {
         let pool = SqlitePool::connect(&db_url)
@@ -66,7 +74,10 @@ pub fn run_db_migrations(app_handle: &AppHandle) -> Result<(), String> {
 
         // Check if the migrations directory exists
         if !std::path::Path::new(&migrations_path).exists() {
-            return Err(format!("Migrations path does not exist: {}", migrations_path));
+            return Err(format!(
+                "Migrations path does not exist: {}",
+                migrations_path
+            ));
         }
 
         sqlx::migrate!("../../../client/desktop-app/db_migrations")

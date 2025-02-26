@@ -1,6 +1,6 @@
-use tauri::command;
 use anyhow::Result;
 use reqwest::Client;
+use tauri::command;
 
 #[command]
 pub async fn perform_tasks() -> Result<(), String> {
@@ -8,14 +8,21 @@ pub async fn perform_tasks() -> Result<(), String> {
 
     // Make HTTP request to FastAPI endpoint
     let client = Client::new();
-    match client.get("http://127.0.0.1:8000/consume_tasks").send().await {
+    match client
+        .get("http://127.0.0.1:8000/consume_tasks")
+        .send()
+        .await
+    {
         Ok(response) => {
             if response.status().is_success() {
                 println!("Successfully connected to FastAPI service");
             } else {
-                println!("Failed to connect to FastAPI service: {}", response.status());
+                println!(
+                    "Failed to connect to FastAPI service: {}",
+                    response.status()
+                );
             }
-        },
+        }
         Err(e) => {
             println!("Error connecting to FastAPI service: {}", e);
         }
