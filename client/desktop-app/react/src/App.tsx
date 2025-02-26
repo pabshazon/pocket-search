@@ -16,7 +16,7 @@ function App() {
       case "/search":
         return <SearchPage/>;
       default:
-        return <div>Error</div>;
+        return <div className="p-4 text-red-600 dark:text-red-400">Error: Page not found</div>;
     }
   };
 

@@ -1,9 +1,9 @@
+import React from "react";
 
-
-export function SearchPage() {
-
+const SearchPage: React.FC = () => {
     return (
         <>
+
         </>
     );
 }

@@ -66,6 +66,7 @@ fn main() {
             scan_folder_and_queue_tasks,
             perform_tasks
         ])
+        .plugin(tauri_plugin_dialog::init())
         .run(tauri::generate_context!())
         .expect("error while running pocket-search application");
 
