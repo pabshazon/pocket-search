@@ -32,9 +32,6 @@ function ScanPage() {
         <main className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-md mx-auto">
                 <div className="text-center">
-                    <h1 className="text-2xl font-semibold text-gray-900 mb-8">
-                        Folder Scanner
-                    </h1>
                     <p className="text-gray-600 mb-8">
                         Select a folder to scan and search through its contents.
                     </p>
@@ -72,12 +69,6 @@ function ScanPage() {
                     >
                         {isScanning ? 'Scanning...' : 'Scan Folder'}
                     </button>
-
-                    {folderPath && (
-                        <p className="text-sm text-gray-500 mt-4">
-                            Selected folder: {folderPath}
-                        </p>
-                    )}
                 </form>
             </div>
         </main>
