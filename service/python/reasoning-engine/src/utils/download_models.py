@@ -1,7 +1,10 @@
 import logging
 import os
-from src.config.models_config import ModelsConfig
+
+from docling.utils.model_downloader import download_models as download_docling_models
 from huggingface_hub import login
+
+from src.config.models_config import ModelsConfig, ModelConfig
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger(__name__)
@@ -22,6 +25,8 @@ def main():
     setup_huggingface_auth()
     ModelsConfig.download_all_models()
     logger.info("Model download process completed")
+    docling_model_abstraction = ModelConfig(name="docling")
+    download_docling_models(docling_model_abstraction.local_path)
 
 if __name__ == "__main__":
     main()

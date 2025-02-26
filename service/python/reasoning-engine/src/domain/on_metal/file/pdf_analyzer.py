@@ -29,9 +29,8 @@ class PdfAnalyzer:
             raise FileNotFoundError("PDF file not found")
 
         try:
-
             converter = DocumentConverter()
-            result = converter.convert(pdf_path)
+            result    = converter.convert(pdf_path)
             print(result.document.export_to_markdown())
 
 

@@ -1,3 +1,4 @@
+import string
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional
 import torch
@@ -32,7 +33,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ModelConfig:
     name: str
-    max_length: int
+    max_length: int                 = field(default=None)
     device_priority: list[str]      = field(default_factory=lambda: [ "mps", "cuda", "cpu"])
     model_params: Dict[str, Any]    = field(default_factory=dict)
     model_class: Optional[Any]      = None
@@ -46,9 +47,12 @@ class ModelConfig:
             self.model_params = {}
     
     @property
-    def local_path(self) -> Path:
+    def local_path(self, name: string = None) -> Path:
         base_path = Path(os.getenv('POCKET_GITHUB_PATH', '').rstrip('/')) / 'service' / 'python' / 'reasoning-engine' / 'models'
-        model_path = base_path / self.name.replace("/", "--")
+        if name is None:
+            model_path = base_path / self.name.replace("/", "--")
+        else:
+            model_path = base_path / name.replace("/", "--")
         logger.debug(f"Checking model path: {model_path}, exists: {model_path.exists()}")
         return model_path
 
@@ -384,4 +388,8 @@ class ModelsConfig:
             },
             "system_prompt": "You are a helpful AI assistant."
         }
+    )
+
+    DOCLING = ModelConfig(
+        name="docling",
     )

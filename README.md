@@ -13,3 +13,8 @@ source infra/dev-scripts/refresh_local.sh
 ```
 Will remove the local database file.
 
+#### Download models for 100% local app
+```bash
+source infra/dev-scripts/download_models.sh
+```
+Will download the models in the `models` folder removing all previous models in the folder.
