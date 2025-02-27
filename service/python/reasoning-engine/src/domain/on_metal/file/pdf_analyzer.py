@@ -2,9 +2,13 @@ from typing      import Dict, Any, List
 from pathlib     import Path
 from dataclasses import dataclass
 
-from docling.document_converter import DocumentConverter
+from docling.datamodel.base_models      import InputFormat
+from docling.datamodel.pipeline_options import EasyOcrOptions, PdfPipelineOptions
+from docling.document_converter         import DocumentConverter, PdfFormatOption
 
 import logging
+
+from src.config.models_config import ModelConfig
 
 
 @dataclass
@@ -29,8 +33,14 @@ class PdfAnalyzer:
             raise FileNotFoundError("PDF file not found")
 
         try:
-            converter = DocumentConverter()
-            result    = converter.convert(pdf_path)
+            local_docling_models_path = ModelConfig(name="docling").local_path
+            docling_pipeline_options  = PdfPipelineOptions(artifacts_path=local_docling_models_path)
+            doc_converter             = DocumentConverter(
+                format_options = {
+                    InputFormat.PDF: PdfFormatOption(pipeline_options=docling_pipeline_options)
+                }
+            )
+            result    = doc_converter.convert(pdf_path)
             print(result.document.export_to_markdown())
 
 
