@@ -1,6 +1,8 @@
 from typing      import Dict, Any, List
 from pathlib     import Path
 from dataclasses import dataclass
+from jsonpointer import resolve_pointer
+
 # import pprint
 
 import logging
@@ -18,30 +20,39 @@ class PdfAnalysisResult:
     semantic_chunks: List[Dict[str, Any]]
 
 
-class PdfAnalyzer:
-    def __init__(self):
-        self.logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
-    def analyze(self, file_path: str) -> PdfAnalysisResult:
-        self.logger.info(f"> Analyzing PDF file: {file_path}")
+class PdfAnalyzer:
+    @staticmethod
+    def analyze(file_path: str) -> PdfAnalysisResult:
+        logger.info(f"> Analyzing PDF file: {file_path}")
 
         pdf_path = Path(file_path)
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF file not found {file_path}")
 
         try:
-            json_file_tree = FileConverter.pdf_to('json', file_path)
-            # pprint.pprint(json_file_tree, indent=4)
+            pdf_document_tree = FileConverter.pdf_to('json', file_path)
+            PdfAnalyzer.process_tree_node(pdf_document_tree["body"], pdf_document_tree)
+
 
         except Exception as e:
-            self.logger.error(f"> Failed to analyze PDF: {str(e)}", exc_info=True)
             raise Exception(f"Failed to analyze PDF: {str(e)}")
 
-    def _extract_metadata(self, doc) -> Dict[str, Any]:
-        return {
-            "num_pages":     len(doc),
-            "metadata":      doc.metadata,
-            "title":         doc.metadata.get("title", ""),
-            "author":        doc.metadata.get("author", ""),
-            "creation_date": doc.metadata.get("creationDate", "")
-        }
+    @staticmethod
+    def process_tree_node(node, pdf_document_tree):
+        print("node")
+        print(node)
+        node_id = node["id"]
+
+        if "children" in node:
+            children_texts = []
+            for child_pointer in node["children"]:
+                child_node = resolve_pointer(pdf_document_tree, child_pointer)
+                print(child_node)
+                child_result = PdfAnalyzer.process_tree_node(child_node, pdf_document_tree)
+                child_text = child_result
+
+
+
+

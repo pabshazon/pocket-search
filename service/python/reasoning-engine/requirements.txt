@@ -12,3 +12,4 @@ datasets
 #Pillow
 #protobuf
 docling
+jsonpointer
