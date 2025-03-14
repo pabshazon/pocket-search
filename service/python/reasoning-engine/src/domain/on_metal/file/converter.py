@@ -34,5 +34,5 @@ class FileConverter:
 
 
         except Exception as e:
-            raise Exception(f"Failed to analyze PDF: {str(e)}")
+            raise Exception(f"Failed to convert PDF: {str(e)}")
 

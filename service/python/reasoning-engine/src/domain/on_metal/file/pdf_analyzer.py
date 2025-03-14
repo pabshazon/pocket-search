@@ -7,7 +7,9 @@ from jsonpointer import resolve_pointer
 
 import logging
 
-from src.domain.on_metal.file.converter import FileConverter
+from src.domain.on_metal.file.converter      import FileConverter
+from src.domain.on_metal.nlp.text_embeddings import TextEmbeddings
+from src.domain.on_metal.nlp.text_summarizer import TextSummarizer
 
 
 @dataclass
@@ -32,26 +34,55 @@ class PdfAnalyzer:
             raise FileNotFoundError(f"PDF file not found {file_path}")
 
         try:
-            pdf_document_tree = FileConverter.pdf_to('json', file_path)
-            PdfAnalyzer.process_tree_node(pdf_document_tree["body"], pdf_document_tree)
-
+            results                     = {}
+            pdf_document_tree           = FileConverter.pdf_to('json', file_path)
+            pdf_processed_document_tree = PdfAnalyzer.process_tree_node(pdf_document_tree["body"], pdf_document_tree, results)
+            print(pdf_processed_document_tree)
 
         except Exception as e:
             raise Exception(f"Failed to analyze PDF: {str(e)}")
 
     @staticmethod
-    def process_tree_node(node, pdf_document_tree):
-        print("node")
-        print(node)
-        node_id = node["id"]
+    def process_tree_node(node, pdf_document_tree, results):
+        node_id = node["self_ref"]
 
-        if "children" in node:
-            children_texts = []
-            for child_pointer in node["children"]:
-                child_node = resolve_pointer(pdf_document_tree, child_pointer)
-                print(child_node)
-                child_result = PdfAnalyzer.process_tree_node(child_node, pdf_document_tree)
-                child_text = child_result
+        try:
+            if "children" in node:  # @todo move to process_non-leaf node
+                children_texts = []
+                for child_pointer in node["children"]:
+                    child_ref    = child_pointer["$ref"]
+                    child_node   = resolve_pointer(pdf_document_tree, child_ref)
+                    child_result = PdfAnalyzer.process_tree_node(child_node, pdf_document_tree, results)
+                    child_text   = child_result["raw_text"] if child_result["raw_text"] else child_result["children_summary"]
+                    if child_text:
+                        children_texts.append(child_text)
+
+                children_summary = TextSummarizer.summarize(children_texts) if children_texts else ""
+                result = {
+                    "raw_text":                     None,
+                    "children_summary":             children_summary,
+                    "embeddings_raw":               None,
+                    "embeddings_children_summary":  TextEmbeddings.embed(children_summary) if children_summary else None
+                }
+            else:  # @todo move to process_leaf node
+                raw_text         = node.get("text", None)
+                children_summary = None  # @todo tbc if use "" instead
+                result           = {
+                    "raw_text":                     raw_text,
+                    "children_summary":             children_summary,
+                    "embeddings_raw":               TextEmbeddings.embed(raw_text) if raw_text else None,
+                    "embeddings_children_summary":  None
+                }
+
+        except Exception as e:
+            raise Exception(f"Failed to process pdf tree: {str(e)}")
+
+        results[node_id] = result
+        return results
+
+
+
+
 
 
 

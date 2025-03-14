@@ -6,6 +6,7 @@ pydantic
 transformers>=4.30.0
 transformers[torch]
 datasets
+sentence-transformers
 #PyMuPDF
 #PyPDF2
 #opencv-python
