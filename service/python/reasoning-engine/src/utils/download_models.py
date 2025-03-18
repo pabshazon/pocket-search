@@ -1,4 +1,3 @@
-import logging
 import os
 
 from docling.utils.model_downloader import download_models as download_docling_models
@@ -6,8 +5,8 @@ from huggingface_hub                import login
 
 from src.config.models_config import ModelsConfig, ModelConfig
 
-logging.basicConfig(level=logging.INFO, format='%(message)s')
-logger = logging.getLogger(__name__)
+from src.domain.on_metal.logger import get_logger
+logger = get_logger(__name__)
 
 def setup_huggingface_auth():
     """Setup Hugging Face authentication using token from environment"""

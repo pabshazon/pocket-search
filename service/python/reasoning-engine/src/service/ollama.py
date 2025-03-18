@@ -1,9 +1,9 @@
 import requests
-import logging
 from typing import Dict, Any, Optional
 import torch
 
-logger = logging.getLogger(__name__)
+from src.domain.on_metal.logger import get_logger
+logger = get_logger(__name__)
 
 class OllamaService:
     def __init__(self, base_url: str = "http://localhost:11434"):

@@ -1,9 +1,10 @@
 from typing import Tuple
-import logging
 import torch
 
 from src.config.models_config import ModelsConfig
 from src.config.document_types_config import DocumentTypesConfig
+from src.domain.on_metal.logger import get_logger
+logger = get_logger(__name__)
 
 class DocumentTypeClassifier:
     """Classifies PDF documents into types and subtypes based on their content using LLM."""

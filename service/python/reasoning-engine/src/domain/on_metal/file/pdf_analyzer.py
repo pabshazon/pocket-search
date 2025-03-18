@@ -5,7 +5,8 @@ from jsonpointer import resolve_pointer
 
 # import pprint
 
-import logging
+from src.domain.on_metal.logger import get_logger
+logger = get_logger(__name__)
 
 from src.domain.on_metal.file.converter      import FileConverter
 from src.domain.on_metal.nlp.text_embeddings import TextEmbeddings
@@ -20,9 +21,6 @@ class PdfAnalysisResult:
     images:          List[Dict[str, Any]]
     naive_chunks:    List[Dict[str, Any]]
     semantic_chunks: List[Dict[str, Any]]
-
-
-logger = logging.getLogger(__name__)
 
 class PdfAnalyzer:
     @staticmethod

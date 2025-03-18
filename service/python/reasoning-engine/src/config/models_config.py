@@ -16,7 +16,7 @@ from transformers import (
     AutoConfig,
     utils
 )
-import logging
+
 import os
 from pathlib import Path
 from src.config.document_types_config import DocumentTypesConfig
@@ -26,9 +26,10 @@ os.environ['HF_DATASETS_OFFLINE'] = '1'
 os.environ['TRANSFORMERS_OFFLINE'] = '1'
 utils.logging.set_verbosity_error()  # Reduce logging noise
 
+from src.domain.on_metal.logger         import get_logger
+logger = get_logger(__name__)
 from .device_config import DeviceConfig
 
-logger = logging.getLogger(__name__)
 
 @dataclass
 class ModelConfig:

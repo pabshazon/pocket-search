@@ -5,11 +5,11 @@ import sqlite3
 from fastapi import HTTPException
 from src.service.database.app_db import AppDB
 import json
-import logging
+from src.domain.on_metal.logger import get_logger
+logger = get_logger(__name__)
 
 def log_error(error_message: str):
     """Helper function to log errors."""
-    logger = logging.getLogger(__name__)
     logger.error(error_message)
 
 class HNode(BaseModel):

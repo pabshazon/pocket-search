@@ -5,7 +5,9 @@ import sqlite3
 from fastapi import HTTPException
 from src.service.database.app_db import AppDB
 import json
-import logging
+from src.domain.on_metal.logger import get_logger
+logger = get_logger(__name__)
+
 
 class Task(BaseModel):
     id: int

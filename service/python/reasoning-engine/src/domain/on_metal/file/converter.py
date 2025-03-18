@@ -4,10 +4,8 @@ from docling.document_converter         import DocumentConverter, PdfFormatOptio
 
 from src.config.models_config import ModelConfig
 
-import logging
-
-
-logger                    = logging.getLogger(__name__)
+from src.domain.on_metal.logger import get_logger
+logger = get_logger(__name__)
 local_docling_models_path = ModelConfig(name="docling").local_path
 
 class FileConverter:

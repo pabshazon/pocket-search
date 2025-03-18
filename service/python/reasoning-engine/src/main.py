@@ -1,9 +1,9 @@
-from fastapi import FastAPI, Body, Header
+from fastapi import FastAPI
 
-from typing import Optional
 import os
 import sys
 
+from src.domain.on_metal.logger       import init_logging, get_logger
 from src.controllers.tasks_controller import TasksController
 
 
@@ -23,5 +23,17 @@ async def consume_tasks():
     return result
 
 if __name__ == "__main__":
+    # Initialize with custom settings
+    init_logging(
+        show_filepath=True,
+        level=logging.DEBUG,
+        log_file="logs/app.log"
+    )
+    
+    logger = get_logger(__name__)
+    logger.info("> Application started")
+
+    logger.info("> Starting FastAPI server...")
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=8000)
+

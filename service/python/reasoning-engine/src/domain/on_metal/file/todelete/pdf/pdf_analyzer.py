@@ -2,7 +2,8 @@ from typing         import Dict, Any, List
 from pathlib        import Path
 from dataclasses    import dataclass
 import fitz  # PyMuPDF
-import logging
+from src.domain.on_metal.logger import get_logger
+logger = get_logger(__name__)
 
 from src.domain.on_metal.tasks.pdf.extractors.text_extractor import PdfTextExtractor
 from src.domain.on_metal.tasks.pdf.summarizer                import PdfSummarizer

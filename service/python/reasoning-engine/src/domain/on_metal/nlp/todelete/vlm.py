@@ -3,12 +3,10 @@ import torch
 from transformers import ViltProcessor, ViltForImageAndTextRetrieval
 import numpy as np
 from PIL import Image
-import logging
 from src.config.device_config import DeviceConfig
 from src.config.models_config import ModelsConfig
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from src.domain.on_metal.logger import get_logger
+logger = get_logger(__name__)
 
 class VisualLanguageModel:
     def __init__(self):

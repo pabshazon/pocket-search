@@ -2,13 +2,12 @@ from typing import List, Dict, Any
 import fitz
 # import spacy
 from dataclasses import dataclass
-import logging
+from src.domain.on_metal.logger import get_logger
+logger = get_logger(__name__)
 
 
 class PdfTextExtractor:
-    def __init__(self):
-        self.logger = logging.getLogger(__name__)
-    
+
     def extract_all_text(self, doc: fitz.Document) -> str:
         try:
             full_text = []
