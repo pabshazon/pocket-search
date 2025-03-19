@@ -29,14 +29,12 @@ class TextSummarizer():
     def __init__(self):
         try:
             logger.debug(f"> Initializing PdfSummarizer")
-            self.config             = ModelsConfig.SUMMARIZER
-            self.model              = self.config.model
-            self.tokenizer          = self.config.tokenizer
-            self.device             = self.config.device
-            self.max_chunk_length   = self.config.max_tokens_input_length
-            self.max_summary_length = 250
-            self.map_template = MAP_PROMPT
-            self.reduce_template = REDUCE_PROMPT
+            self.model_config       = ModelsConfig.SUMMARIZER
+            self.model              = self.model_config.model
+            self.tokenizer          = self.model_config.tokenizer
+            self.device             = self.model_config.device
+            self.max_chunk_length   = self.model_config.max_tokens_input_length
+
         except Exception as e:
             logger.error(f"Failed to initialize PdfSummarizer: {str(e)}", exc_info=True)
             raise
@@ -69,13 +67,13 @@ class TextSummarizer():
             start_time = time.time()
             chunk_size = len(chunk)
             logger.info(f"Starting chunk summarization (size: {chunk_size} chars)")
-            logger.info(f"Model has max_tokens_input_length of {self.config.max_tokens_input_length} tokens.")
+            logger.info(f"Model has max_tokens_input_length of {self.model_config.max_tokens_input_length} tokens.")
 
             # Tokenization phase
             tok_start = time.time()
             inputs = self.tokenizer(
                 chunk,
-                max_length=self.config.max_tokens_input_length,
+                max_length=self.model_config.max_tokens_input_length,
                 truncation=True,
                 padding=True,
                 return_tensors="pt"
@@ -88,8 +86,8 @@ class TextSummarizer():
             gen_start = time.time()
             outputs = self.model.generate(
                 **inputs,
-                max_length=self.config.max_tokens_output_length,
-                min_length=self.config.min_tokens_output_length,
+                max_length=self.model_config.max_tokens_output_length,
+                min_length=self.model_config.min_tokens_output_length,
                 num_return_sequences=1,
                 early_stopping=True
             )
