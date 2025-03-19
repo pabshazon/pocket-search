@@ -1,3 +1,4 @@
+import math
 import platform
 import psutil
 
@@ -8,6 +9,8 @@ import torch
 from transformers import AutoTokenizer
 
 from src.domain.on_metal.nlp.model_info import ModelInfo
+from src.domain.on_metal.logger import get_logger
+logger = get_logger(__name__)
 
 
 class VRamMemory:
@@ -15,15 +18,23 @@ class VRamMemory:
         self.is_apple_silicon = self._detect_hardware()
         self.models_info      = self._initialize_models_info()
 
-    def get_available_memory(self, units: str = "tokens"):
+    def get_max_context_size(self, units: str = "tokens"):
         if units != "tokens": raise ArgumentError(None, "Units argument cannot be None.")
 
         if units == "tokens":
-            bytes_per_token         = 2048  # @todo get from the tokenizer and/or as argument?
-            available_memory_bytes  = self._get_available_memory()  # @todo confirm this is in bytes?
-            available_memory_tokens = available_memory_bytes / bytes_per_token
+            bytes_per_token          = 2048  # @todo get from the tokenizer and/or as argument?
+            available_memory_bytes   = self._get_available_memory()  # @todo confirm this is in bytes?
+            available_memory_tokens  = available_memory_bytes / bytes_per_token
+            context_memory_expansion = 'quadratic'  # @todo do per model. For now I am leaving this here for all models to keep it safe when using LLMs.
+            # @todo @hacks below - constants should be taken from models for each specific model from model config class
+            QUADRATIC_CONSTANT = 32.0  # bytes per token^2 per layer
+            default_num_layers = 40  # adjust per your model architecture
 
-            return available_memory_tokens
+            quadratic_available_tokens = round(math.sqrt(available_memory_bytes / (QUADRATIC_CONSTANT * default_num_layers)), 0)
+            logger.debug(f"VRamMemory - Available_memory_tokens: {available_memory_tokens}")
+            logger.debug(f"VRamMemory - Quadratic available tokens: {quadratic_available_tokens}")
+
+            return quadratic_available_tokens
         else:
             raise ArgumentError(f"Units '{units}' is not implemented yet. Only 'tokens' unit is available for now.")
 
@@ -40,6 +51,9 @@ class VRamMemory:
         return "mps" if has_mps else "cpu"
 
     def estimate_model_contexts(self) -> dict:
+
+        #@todo for now is always quadratic context vs memory usage
+
         return {
             "system_info": {
                 "available_ram": self.get_memory_info(),
