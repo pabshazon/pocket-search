@@ -30,11 +30,11 @@ class Analyzer:
             # pdf_summary_decoder = text_summarizer.summarize_with_decoder_llm(pdf_as_md)
             pdf_metadata        = PdfAnalyzer.extract_metadata(hnode.fs_full_path)
 
-            result.summary = pdf_summary_s2s
+            result.summary  = pdf_summary_s2s
             result.metadata = pdf_metadata
 
-            logger.info("result")
-            logger.info(result)
+            logger.info("Final Summary:")
+            logger.info(result.summary)
             return result
 
     @staticmethod

@@ -56,7 +56,7 @@ class TextSummarizer():
 
             logger.info(f"Got {len(chunks)} chunks")
             chunk_summaries = [self.summarize_chunk(chunk) for chunk in chunks]
-            final_summary = self.summarize_chunk(" ".join(chunk_summaries))
+            final_summary   = self.summarize_chunk(" -- ".join(chunk_summaries))
 
             return final_summary
 
@@ -69,7 +69,8 @@ class TextSummarizer():
             start_time = time.time()
             chunk_size = len(chunk)
             logger.info(f"Starting chunk summarization (size: {chunk_size} chars)")
-            
+            logger.info(f"Model has max_tokens_input_length of {self.config.max_tokens_input_length} tokens.")
+
             # Tokenization phase
             tok_start = time.time()
             inputs = self.tokenizer(
@@ -82,7 +83,7 @@ class TextSummarizer():
             tok_time = time.time() - tok_start
             num_tokens = len(inputs['input_ids'][0])
             logger.debug(f"Tokenization completed: {num_tokens} tokens in {tok_time:.2f}s")
-            
+
             # Generation phase
             gen_start = time.time()
             outputs = self.model.generate(
@@ -94,7 +95,7 @@ class TextSummarizer():
             )
             gen_time = time.time() - gen_start
             logger.debug(f"Summary generation completed in {gen_time:.2f}s")
-            
+
             # Decoding phase
             dec_start = time.time()
             summary = self.tokenizer.decode(
@@ -109,8 +110,7 @@ class TextSummarizer():
             summary_size = len(summary)
             compression_ratio = (chunk_size - summary_size) / chunk_size * 100
             
-            logger.info(f"Chunk summarized: {chunk_size:,} chars → {summary_size:,} chars >> {compression_ratio:.1f}% reduction) in {total_time:.2f}s")
-            logger.info(f"Times: tokenize={tok_time:.2f}s, generate={gen_time:.2f}s, decode={dec_time:.2f}s")
+            logger.info(f"Chunk summarized: {chunk_size:,} chars → {summary_size:,} chars >> {compression_ratio:.1f}% reduction) in {total_time:.2f}s >> Times: tokenize={tok_time:.2f}s, generate={gen_time:.2f}s, decode={dec_time:.2f}s")
             
             return summary.strip()
             
