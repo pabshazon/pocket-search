@@ -276,12 +276,12 @@ class ModelsConfig:
     SUMMARIZER = ModelConfig(
         name="facebook/bart-large-cnn",
         max_tokens_input_length=1024,
-        max_tokens_output_length=142,
+        max_tokens_output_length=256,
         min_tokens_output_length=56,
         model_class=AutoModelForSeq2SeqLM,
         device_priority=["mps", "cuda", "cpu"],
         model_params={
-            "max_length": 142,
+            "max_length": 256,
             "min_length": 56,
             "do_sample": False
         }

@@ -33,8 +33,9 @@ class Analyzer:
             result.summary  = pdf_summary_s2s
             result.metadata = pdf_metadata
 
-            logger.info("Final Summary:")
+            logger.info("Final Summary & Metadata:")
             logger.info(result.summary)
+            logger.info(result.metadata)
             return result
 
     @staticmethod

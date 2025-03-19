@@ -54,7 +54,9 @@ class TextSummarizer():
 
             logger.info(f"Got {len(chunks)} chunks")
             chunk_summaries = [self.summarize_chunk(chunk) for chunk in chunks]
-            final_summary   = self.summarize_chunk(" -- ".join(chunk_summaries))
+
+            filtered_summaries = [s for s in chunk_summaries if len(s.strip()) > 20]  # Filter out empty or too-short summaries
+            final_summary      = self.summarize_chunk(" -- ".join(filtered_summaries))
 
             return final_summary
 
@@ -89,6 +91,7 @@ class TextSummarizer():
                 max_length=self.model_config.max_tokens_output_length,
                 min_length=self.model_config.min_tokens_output_length,
                 num_return_sequences=1,
+                num_beams=4,
                 early_stopping=True
             )
             gen_time = time.time() - gen_start
@@ -109,7 +112,7 @@ class TextSummarizer():
             compression_ratio = (chunk_size - summary_size) / chunk_size * 100
             
             logger.info(f"Chunk summarized: {chunk_size:,} chars → {summary_size:,} chars >> {compression_ratio:.1f}% reduction) in {total_time:.2f}s >> Times: tokenize={tok_time:.2f}s, generate={gen_time:.2f}s, decode={dec_time:.2f}s")
-            
+            logger.info(f"Chunk Summary: {summary.strip()}")
             return summary.strip()
             
         except Exception as e:

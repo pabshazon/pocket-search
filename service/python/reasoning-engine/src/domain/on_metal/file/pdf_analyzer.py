@@ -95,7 +95,6 @@ class PdfAnalyzer:
     def extract_metadata(pdf_path) -> Dict[str, Any]:
         # @todo tbc if we need fitz for this, or if docling already provides the metadata we need.
         pdf_doc = fitz.open(pdf_path)
-        logger.info(1)
         return {
             "num_pages":     len(pdf_doc),
             **pdf_doc.metadata,
