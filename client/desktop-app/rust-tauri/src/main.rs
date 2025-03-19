@@ -42,7 +42,8 @@ impl Drop for FastAPIServer {
 }
 
 fn main() {
-    let fastapi_server = Arc::new(Mutex::new(FastAPIServer::new()));
+    // @todo tbc if we need line underneath or we can init this differently
+    let _fastapi_server = Arc::new(Mutex::new(FastAPIServer::new()));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())

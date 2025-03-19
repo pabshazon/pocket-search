@@ -2,7 +2,6 @@ use crate::domain::on_metal::middleware::file_system::entry_type::EntryType;
 use crate::domain::on_metal::middleware::file_system::file_system_entry::FileSystemEntry;
 use anyhow::Result;
 use serde_json;
-use serde_json::json;
 use sqlx::SqlitePool;
 use sqlx::{QueryBuilder, Row};
 use tauri::{AppHandle, Manager};

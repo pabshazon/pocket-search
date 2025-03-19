@@ -7,6 +7,7 @@ pub struct FileSystemEntry {
     pub entry_type: EntryType,
     pub path: String,
     pub file_size: u64,
+    #[allow(dead_code)]
     pub is_read_only: bool,
     pub inode: Option<u64>,
     pub os_metadata: Option<OsMetadata>,

@@ -3,8 +3,6 @@ use regex::Regex;
 use std::collections::HashSet;
 use tauri::command;
 
-use crate::domain::on_metal::middleware::file_system::entry_type::EntryType;
-use crate::domain::on_metal::middleware::file_system::file_system_entry::FileSystemEntry;
 use crate::domain::on_metal::middleware::file_system::folder_scannable::FolderScannable;
 use crate::domain::on_metal::middleware::file_system::folder_scanner::FolderScanner;
 

@@ -1,0 +1,425 @@
+Contrastive Decoding: Open-ended Text Generation as Optimization
+
+Xiang Lisa Li , Ari Holtzman , Daniel Fried , Percy Liang , Jason Eisner , 1 2 3 1 4 Tatsunori Hashimoto , Luke Zettlemoyer 1 2 5 , , Mike Lewis 5
+
+Stanford University , University of Washington , Carnegie Mellon University , 1 2 3 Johns Hopkins University , FAIR 4 5
+
+xlisali@stanford.edu , ahai@cs.washington.edu dfried@cs.cmu.edu , , pliang@stanford.edu jason@cs.jhu.edu thashim@stanford.edu , , , lsz@cs.washington.edu mikelewis@meta.com ,
+
+Abstract
+
+Given a language model (LM), maximum probability is a poor decoding objective for open-ended generation, because it produces short and repetitive text. On the other hand, sampling can often produce incoherent text that drifts from the original topics. We propose contrastive decoding (CD), a reliable decoding approach that optimizes a contrastive objective subject to a plausibility constraint. The contrastive objective returns the difference between the likelihood under a large LM (called the expert, e.g. OPT-13B) and a small LM (called the amateur, e.g. OPT-125M), and the constraint ensures that the outputs are plausible. CD is inspired by the fact that the failures of larger LMs (e.g., repetition, incoherence) are even more prevalent in smaller LMs, and that this difference signals which texts should be preferred. CD requires zero additional training, and produces higher quality text than decoding from the larger LM alone. It also works across model scales (OPT-13B and GPT2-1.5B) and significantly outperforms four strong decoding algorithms (e.g., nucleus, top-k) in automatic and human evaluations across wikipedia, news and story domains. 1
+
+1 Introduction
+
+Open-ended text generation aims to craft fluent and coherent textual continuations of given prompts, laying foundations for various downstream applications such as writing assistance and story generation (Brown et al., 2020). The canonical approaches often sample from large pre-trained language models (Holtzman et al., 2020; Fan et al., 2018; Radford et al., 2019), but the generated text is prone to incoherence and topic drift as unlucky sampling choices compound over long sequences (Eikema and Aziz, 2020; Maynez et al., 2020). On the other hand, searching for the most likely se-
+
+<!-- missing-text -->
+
+quences often results in short, repetitive and tedious text (Holtzman et al., 2020), indicating that maximizing probability is a wrong decoding objective.
+
+We propose a new search-based approach, contrastive decoding (CD), that can generate fluent and lexically diverse text without compromising coherence. As shown in Figure 1, contrastive decoding takes an off-the-shelf large language model such as OPT-13B (that we call the expert) and an off-the-shelf smaller language model such as OPT-125M (that we call the amateur). CD searches for text that maximizes the difference between expert log-probabilities and amateur log-probabilities, subject to plausibility constraints which restrict the search space to tokens with sufficiently high probability under the expert LM.
+
+Contrastive Decoding works because many failure modes of language models (short, repetitive, irrelevant or uninteresting strings) are more common under smaller LMs than under larger LMs. Such outputs are further deemphasized by taking the difference between model log-probabilities. Conversely, stronger models tend to put more probability mass on desirable outputs, such as those with factual knowledge that has not been learnt by the weaker model, and these strings are emphasized by contrastive decoding.
+
+Taking Figure 1 as an example, the expert model places significant probability mass on previous tokens such as 'Hawaii' and 'Honolulu', leading to a highly repetitive continuation from greedy search; and nonsensical tokens such as 'Washington' may be sampled, leading to an incoherent continuation. A correct continuation '1961' is strongly preferred by contrastive decoding, despite only having a probability of 0.1, and the continuation includes more correct facts. This example suggests that contrastive decoding generates outputs that emphasize the best of the expert LM and remove its amateur tendencies. Moreover, we provide a pragmatic interpretation of contrastive decoding in §4.
+
+Compared to recent training-based methods that improve generation quality such as unlikelihood training (Welleck et al., 2020) and contrastive learning (Su et al., 2022; An et al., 2022), contrastive decoding requires zero additional training. We find that by simply contrasting two frozen language models of different sizes, we are able to decode higher quality text than from the larger LM alone. Furthermore, we find that better performance is achieved when the scale difference between expert and amateur is larger (§7.1). As a result, the optimal amateur model is also cheap to run and incurs very little inference time overhead.
+
+We evaluate our contrastive decoding approach for open-ended text generation in three domains: Wikipedia, stories, and news, and we evaluate using different teacher-student combinations, including (GPT2-XL v.s. GPT2-small, OPT-13B v.s. OPT-125M). Compared to four decoding baselines (nucleus sampling, top-k, typical decoding and SimCTG) our contrastive decoding method significantly improves the coherence of generated text, and improves or maintains the same fluency levels, according to both human evaluation and automatic metrics.
+
+2 Problem Statement
+
+We consider decoding approaches for open-ended language generation, where the language models receive an input prompt and aim to generate a fluent and coherent continuation. Specifically, we consider a relatively short prompt of length n , denoted as xpre = x 1 · · · x n , where x i is a token in the vocabulary V . The decoder must generate continuations of length m , denoted as xcont = x n +1 , · · · , x n + m .
+
+We generate text from a pre-trained autoregressive language model p LM. At decoding time, we iteratively decode one token at a time by conditioning on the preceding context:
+
+<!-- formula-not-decoded -->
+
+where p LM ( x i | x &lt;i ) is the next token distribution. We use different subscripts to denote different LMs: p AMA is the amateur LM (e.g., GPT-2 small), and p EXP is the expert LM (e.g., GPT-2 XL).
+
+One canonical decoding approach is to sample from a truncated next token distribution at each time step. For example, nucleus sampling (Holtzman et al., 2020) draws from the top p percentile of the next token distribution; top-k sampling (Fan et al., 2018) draws from the top k candidates in the next token distribution. Another common approach is to search for the most likely text sequence via greedy decoding or beam search (Wu et al., 2016); but this leads to repetition and tedious outputs.
+
+3 Contrastive Decoding
+
+We propose contrastive decoding as a search-based decoding method that optimizes a novel contrastive objective subject to our plausibility constraint. We first provide intuition and define the constrastive objective (§3.1). Second, we discuss the potential weakness of this objective alone, and introduce the plausibility constraint to correct for the weakness (§3.2). Then we define the full contrastive decoding method as our contrastive objective subject to the plausibility constraint (§3.3). Finally, we elaborate on the design spaces by discussing the choices of amateurs (§3.4).
+
+3.1 Contrastive Objective
+
+Smaller LMs demonstrate stronger tendencies to produce undesirable patterns (e.g., repetition, topic drift, and self contradiction) than larger LMs. For example, when both expert (larger LM) and amateur (smaller LM) assign highest probability to a repetitive token, the expert LM is often less confident about this decision and assigns non-trivial probability mass to other good, non-repetitive continuations. Contrastive decoding is inspired by these observations. The goal is to factor out undesired behaviors highlighted by the smaller amateur LMs, and generate text from the remaining good behaviors of larger expert LMs.
+
+To operationalize this intuition, we propose the contrastive objective L CD ( xcont , xpre ) :
+
+<!-- formula-not-decoded -->
+
+The CD objective rewards text patterns favored by the large expert LMs and penalizes patterns favored by the small amateur LMs. However, amateur LMs are not always mistaken: small language models still capture many simple aspects of English grammar and common sense (e.g., subject verb agreement). Thus, penalizing all behaviors from amateur LMs indiscriminately would penalize these simple aspects that are correct (False negative), and conversely reward implausible tokens (False positive). To tackle this issue, we introduce the plausibility constraint, which complements our CD objective and avoids these failure modes.
+
+3.2 V head: Adaptive Plausibility Constraint
+
+To tackle the aforementioned issue, we propose an adaptive plausibility constraint ( V head) that exploits the confidence level of the expert LM to restrict the effect of the contrastive objective when the expert LM is highly confident:
+
+<!-- formula-not-decoded -->
+
+Here, α is a hyperparameter in [0 , 1] that truncates the next token distribution of p EXP . Larger α entails more aggressive truncation, keeping only high probability tokens, whereas smaller α allows tokens of lower probabilities to be generated. We set α = 0 1 . throughout the paper.
+
+This adaptive plausibility constraint corrects for both false positive and false negative failures of the contrastive objective:
+
+False positives. An implausible token may be rewarded with a high score under our unconstrained contrastive objective. For example, the token 'NetMessage' is highly implausible under the context of Figure 1, with 3 × 10 -9 of p EXP and 8 × 10 -14 of p AMA; however, it attains the highest contrast of log p EXP -log p AMA = 10 6 . , which is much higher than plausible tokens '1961' and 'Hawaii'. To handle the false positive problem, V head filters out low probability tokens and only keeps high probability tokens in the candidate pool.
+
+False negatives. When confronting an easy decision, the correct token that achieves high probability under both amateur LM and expert LM may receive a low score under the contrastive objective. For example, due to tokenization, the word 'unicorn' consists of two subwords: 'unic' and '#orn', and the probability of '#orn' given the prefix 'unic' is close to 0.99 under both LMs, but the contrast log p EXP -log p AMA is only 6 × 10 -4 , which is much lower than bad continuations.
+
+Here, V head uses the expert LM's confidence (as defined by the α ratio with the max probability token in the given timestep) to avoid these false negative cases. The expert LM assigns high confidence to easy decisions, but not to tokens that reflect the undesired behaviors of the amateur, since probability mass is taken up by other candidate tokens the expert is able to consider. Our constraint keeps as few as one token in the candidate pool when the expert is highly confident about this token, which removes the impact of the contrastive objective, because the single token would always be highest ranked regardless of the CD objective.
+
+3.3 Full Method
+
+Combining the contrastive objective and the adaptive plausibility constraint, we obtain the full contrastive decoding formulation:
+
+<!-- formula-not-decoded -->
+
+The above objective is defined at the sequence level, which is intractable to optimize. Thus, we factor the objective to token level scores:
+
+<!-- formula-not-decoded -->
+
+We apply beam search to optimize CD-score , by first filtering tokens based on plausibility constraints V head ( x &lt;i ) , eliminating tokens that fail to achieve sufficiently high probabilities under the expert LM. Then we score the remaining tokens based on the amount of contrast they demonstrate, according to log p EXP ( x i | x &lt;i ) -log p AMA ( x i | x &lt;i ) . As a result, we end up selecting plausible tokens under the expert LM that least resemble the amateur LM.
+
+3.4 Choice of Amateur
+
+The choice of amateur LM is an important decision for contrastive decoding. As discussed in §3.1, we should choose amateur LMs that exhibit the behaviors we would like to downweight from the expert LM. Here, we consider three aspects:
+
+Scale. Smaller LMs have lower modeling capacity and are more prone to errors. Therefore, we choose the amateur LM to be the smallest model in the same family of the expert LM. For example, for OPT-13B expert, we choose OPT-125M as the amateur; for GPT-2 XL expert, we choose GPT-2 small as the amateur. We verify this design choice in §7.1. On the extreme end, employing n-gram models yields an amateur LM of extremely low capacity. But this choice hurts generation quality, because n-gram LMs incur too many errors to identify similar failure modes of the expert LM.
+
+Temperature. We can manipulate the amateur LM behavior by tuning its temperature τ . For example, applying a high temperature ( τ &gt; 1 ) to the amateur LM results in flatter distributions; applying a low temperature ( τ close to 0 ) highlights the mode of the amateur distribution, which is more prone to errors (e.g. repetition). Therefore, we manipulate the temperature of the amateur LM to adjust the amateur behavior that will be penalized in contrastive decoding. In §7.2, we study the impact of τ to generation quality and set τ to 0 5 . or 1 0 . for our main experiments.
+
+Context window. We can also weaken capacity by restricting the context window of the amateur LM (Li et al., 2016). For instance, we can only allow the amateur LM to condition on the last token of xpre , but we allow the expert LM to condition on the entire xpre . In other words, we decode from log p EXP ( xcont | x 1: n ) p AMA ( xcont | x n ) . By conditioning the amateur LM only on partial prompts, the coherence of the amateur LM is weakened, and contrastive decoding produces more coherent text by highlighting the coherence nature of the expert LM. In §7.5, we study the impact of this design choice.
+
+4 CD as Pragmatic Communication
+
+Having formally described contrastive decoding, we now provide a pragmatic interpretation, justifying its validity through pragmatic communication goals .
+
+A line of work in pragmatics (Grice, 1975) characterizes communication as a cooperative process between speakers and listeners. Several of these formalisms (Horn, 1984; Levinson, 2000) describe a tradeoff between speakers and listeners, where a speaker should generally produce language that is high quality (e.g. truthful, fluent, and relevant) while also being informative to a listener.
+
+Our contrastive objective can be motivated by this tradeoff, with our expert and amateur LMs modeling a knowledgable speaker and a lessinformed listener: (1) Upweighting tokens by p EXP and using our expert-based plausibility constraints generates tokens that have high probability under the expert LM, encouraging generated text to be fluent and relevant (e.g. upweighting '1961' in Figure 1). (2) Downweighting tokens by p AMA suppresses language that is predictable by (i.e. less informative to) the amateur LM (e.g. downweighting 'Honolulu' and 'Washington'), and by proxy encourages the language to be informative to a listener in context. By combining these two criteria, our contrastive decoding method produces high quality text that satisfies the communicative goal of transferring relevant but not predictable information.
+
+4.1 Special Cases of Contrastive Decoding
+
+Maximum probability. Setting the amateur LM to a uniform distribution reduces CD to maximize log-probabilities under the expert LM.
+
+N-gram blocking. If we set the amateur LM as an n-gram model whose n-gram counts are updated to fit the generated prefix, this yields a decoding algorithm with soft n-gram blocking. If we also set the amateur temperature to be very small, then it approaches the canonical heuristic of forbidding repeated n-grams (Paulus et al., 2018).
+
+Diverse decoding. If we use the same LM as both amateur and expert and restrict the context window of the amateur LM (§3.4), our method is equivalant to the MMI decoding objective (Li et al., 2016) sometimes used in dialog systems, which explicitly maximizes the pointwise mutual information between the xpre and xcont .
+
+5 Experimental Setup
+
+5.1 Datasets and Metrics
+
+We evaluate on three domains for open-ended text generation: news, Wikipedia, and story domains. For the news domain, we use news articles from Wikinews; 2 for the Wikipedia domain, we use the WikiText-103 dataset (Merity et al., 2017); and for story domains, we use the BookCorpus (Zhu et al., 2015) (Project Gutenberg split).
+
+We use the first 32 words in the passage as the prompt, and decode for 256 tokens for the continuations. We evaluate generated text with both automatic and human evaluation.
+
+Diversity. This metrics aggregate n-gram repetition rates: DIV = ∏ 4 n =2 | unique n-grams ( xcont ) | total n-grams ( xcont ) | . A low diversity score suggests the model suffers from repetition, and a high diversity score means the model generated text is lexically diverse.
+
+MAUVE. MAUVE (Pillutla et al., 2021) score (the higher the better) measures the distribution similarity between the set of generated text and the set of gold reference.
+
+Coherence. We follow Su et al. (2022) and approximate coherence by cosine similarity between the sentence embeddings of prompt xpre and generated continuation xcont : COH ( xcont , xpre ) = EMB ( xpre ) · EMB ( xcont ) || EMB ( xpre ) ||·|| EMB ( xcont ) || , where EMB ( x ) is the pre-trained SimCSE sentence embedding (Gao et al., 2021).
+
+Human Eval. In order to evaluate the quality of the generated text, we consider two critical aspects: fluency and coherence . A fluent piece of text is written in grammatical English and has a natural flow (e.g. excluding unnatural repetition or web formatting). A coherent piece of text should stay on topic with the prompt and avoid unnatural topic drift. We ask Amazon Mechanical Turkers to read two continuations (A and B) of the same prompt, and choose the more fluent/coherent continuation or decide they are similar.
+
+5.2 Baselines
+
+We compare contrastive decoding with three sampling methods, each with the recommended hyperparameters: nucleus sampling ( p = 0 95 . ), top-k sampling ( k = 50 ), typical decoding (Meister et al., 2022) ( τ = 0 95 . ); and two search-based methods:
+
+greedy (max prob) decoding that uses log p EXP as the objective, and contrastive search (CS) (Su et al., 2022; Su and Collier, 2022). Among them, nucleus sampling is the standard approach for open-ended text generation whose performance has been verified in various domains (Holtzman et al., 2020; DeLucia et al., 2020), and typical decoding is a recently proposed approach that excels in lexical diversity (Meister et al., 2022). We therefore conduct human evaluation by comparing CD against these two methods.
+
+5.3 Models and Hyperparameters
+
+In order to demonstrate that our approach generalizes across various LM families and sizes, we consider GPT-2 XL (1.5B), OPT (6.7B) and OPT (13B) as expert LMs and employ the smallest LM in their respective family as the amateurs: GPT-2 small (100M) and OPT (125M).
+
+Recall that contrastive decoding introduces two hyperparameters: α is the parameter to adjust the plausibility threshold, and τ is the temperature of the amateur LM. We always set α = 0 1 . for the main results in the paper - we find that this setting is quite robust and generalizes across various domains. For OPT experiments, we set the amateur temperature to 1 0 . and for GPT-2 experiments, we set the amateur temperature to 0 5 . . We use a beam size of 5. We also study the impact of these hyperparameters in the ablation study §7.2, and we find that our method is robust to various hyperparameter values.
+
+6 Main Results
+
+6.1 Automatic Evaluation
+
+As shown in Table 1, contrastive decoding outperforms all other decoding baselines in MAUVE score and coherence score (COH) across three different domains (news, Wikipedia, stories) and two model sizes (1.5B, 13B). Contrastive decoding achieves comparable or slightly worse diversity compared to nucleus and typical sampling, but it achieves substantially better diversity than other search based methods.
+
+Typical decoding and nucleus sampling produce lexically diverse text by choosing low probability tokens, at the expense of topic drift. For instance, in the story domain we observe the largest diversity gap between contrastive decoding and nucleus sampling (0.83 v.s. 0.94) in the 1.5B model, but we find that the gap shrinks (0.89 v.s. 0.93) as the model size increases to 13 billion, suggesting that our decoding method would continue to improve as expert models continue to scale.
+
+CD outperforms all the baselines in coherence scores by a large margin, followed by greedy decoding. Greedy decoding achieves good coherence despite being highly repetitive, because always repeating the same sentence is a degenerate way to circumvent topic drift. We believe our gain in coherence comes from three aspects: (1) CD searches to optimize our objective, avoiding the topic drift that can happen by chance in sampling-based generation techniques. (2) Our contrastive objective implicitly rewards coherence, because large LMs are typically more coherent than smaller LMs. (3) Finally, we restrict the context length of the amateur LM (§3.4), further encouraging CD to reward text that is connected with the prompt (Li et al., 2016).
+
+6.2 Human Evaluation
+
+We conduct human evaluation to compare our contrastive decoding approach against nucleus sampling (the canonical method that scores high under MAUVE) and typical decoding (the winning method for diversity metrics). 3
+
+As shown in Table 2, contrastive decoding generates significantly more coherent text compared to nucleus and typical decoding across three domains and two models: on average across settings, evaluators preferred CD 2.6x more than nucleus sampling and 6.4x more than typical decoding when evaluating coherence. As for fluency, CD is preferred 1.4x more than nucleus sampling and 3.5x more than typical decoding.
+
+6.3 Qualitative Examples
+
+We include a truncated qualitative example in Table 3. The nucleus sampling output shows a topic drift from a video game to music, and part of the generated text includes the format of an email; moreover, there is a style shift from third person narrative style to first person conversational style. These features match the noisy pre-training distribution of internet data, but are not desirable in the context of this prompt. Contrastive decoding output stays on topic with the prompt and elaborates on various aspects of the game, making it more coherent in both content and style. We include more qualitative examples in the appendix.
+
+<!-- missing-text -->
+
+7 Ablation Studies
+
+7.1 Size of Amateur and Expert LMs
+
+Recall in §3.4, we provide intuition that choosing smaller LMs as the amateur should improve contrastive decoding results. We empirically verify this in Figure 2.
+
+The diagonal entries use the same model as expert and amateur, yielding highly repetitive text (low diversity score), because we cannot exploit any contrast between two identical LMs. The upper triangular entries use an expert LM that is smaller than the amateur LM, and this counter-intuitive setup leads to inferior text quality. The lower triangular entries use an expert LM that is larger than the amateur LM, resulting in higher quality text, as measured by both diversity and MAUVE. In particular, the optimal design is to select the largest LM as the expert and the smallest one as the amateur (lower left corner).
+
+Does this trend generalize to extremely low capacity LMs like n-gram models? We find that employing a trigram LM as the amateur produces low quality text with a MAUVE score of only 0.73. Our findings indicate that contrastive decoding benefits most with an amateur LM that can emphasize the failure modes of the expert LM, and the mistakes of a low-capacity n-gram model do not highlight failure modes of an expert LM.
+
+7.2 The Impact of Amateur Temperature
+
+Recall in §3.3, we introduced the amateur LM temperature τ as a hyperparameter. We study how sensitive our method is to τ as shown in Figure 3.
+
+Large τ brings the amateur distribution closer to the uniform distribution, which makes contrastive
+
+<!-- missing-text -->
+
+<!-- missing-text -->
+
+<!-- missing-text -->
+
+<!-- missing-text -->
+
+<!-- missing-text -->
+
+decoding generate repetitive text, as repetition is no longer penalized. Small τ makes the amateur LM more spiky and emphasizes undesired amateur behaviors, leading to better outputs from contrastive decoding. As shown in Figure 3, we find that setting τ in [0 5 . , 1 5] . attains good and robust performance in coherence and fluency.
+
+7.3 Sampling v.s. Search
+
+Recall that contrastive decoding is a search -based approach that maximizes the contrastive objective subject to plausibility constraints. We explore a sampling alternative based on the same objective. Specifically, we normalize the CD-score( x i ; x &lt;i ) (defined in §3.3) via softmax into a probability distribution from which we sample the next token.
+
+<!-- missing-text -->
+
+As shown in Table 4 and Table 5, we find that sampling from this objective produces lower quality text than searching under the objective. According to automatic and human evaluations, CD (sample)'s fluency and coherence rating consistently falls behind CD (search), but sampling still yields reasonably good outputs.
+
+7.4 Plausibility Constraints
+
+In §3.2, we describe why including the feasibility constraints is critical. Here, we conduct an ablation study verifying this claim by removing the plausibility constraints V head. We find that the generation outputs suffers from severe fluency issues, as easily shown by its MAUVE score of 0.01 in the CD(V head) row of Table 4.
+
+7.5 Prompt Inclusion
+
+We further experiment with ablating the prompt context on the amateur LM (§3.4), by letting the expert LM and amateur LM both condition on the entire xpre . Table 5 shows that the ablation slightly hurts coherence and fluency.
+
+8 Related Work
+
+Decoding Methods. Decoding algorithms can be broadly classified as either search or sampling algorithms. Current search methods (e.g. greedy and beam search) attain accurate generation in goaldriven tasks (e.g. summarization), but suffers from tedious and repetitive outputs in open-ended settings (e.g. story generation). Current sampling methods (e.g. nucleus (Holtzman et al., 2020), topk (Fan et al., 2018), and typical decoding (Meister et al., 2022)) produces more diverse and interesting text in open-ended settings, but suffers from unnatural topic drift. Contrastive decoding avoids topic drift by using search, and outperforms nucleus and top-k sampling in coherence while maintaining or improving fluency and lexical diversity.
+
+Contrast in Text Generation. The idea of contrast for text generation has been explored in diverse settings (He et al., 2019; Li et al., 2016; Su et al., 2022). The closest work to ours is DExpert (Liu et al., 2021), which studies controllable text generation by contrasting an trained expert model (on non-toxic data) and a trained anti-expert model (on toxic data) to produce text that is non-toxic. In this work, we focus on open-ended text generation and show that it is possible to get domainand task-agnostic anti-experts simply by using a smaller LM. Contrastive decoding contrasts offthe-shelf LMs of different scales to produce high quality text, without any training.
+
+9 Conclusion and Future Work
+
+We propose contrastive decoding, a search-based decoding approach that contrasts LMs of different scales. We evaluate our approach on open-ended text generation, and find that it improves over the prevalent methods like nucleus sampling in both fluency and coherence.
+
+As future work, the idea of contrasting an expert (larger LM) and an amateur (smaller LM) can be expanded to myriad setups, for instance, contrasting an early checkpoint of an LM and a later checkpoint of the LM. We hope that this paper can encourage more exploration of how to use contrasting language models.
+
+Limitations
+
+In this paper, we focus on open-ended text generation and demonstrate the effectiveness of contrastive decoding. We would like contrastive decoding to also work well for task-oriented generation settings such as summarization and machine translation. However, the idea of contrasting models across different scales (larger expert LM and smaller amateur LM) is not directly applicable, because the modes of both amateur LM and expert LM are of high quality. Empirically, having a smaller summaization model (BART-small finetuned on summarization data) as the amateur LM yields lower ROUGE score than employing a uniform distribution as the amateur LM, which is equivalent to beam search based on log-probabilities. As future work, we aim to study the necessary properties of amateur LM to empower task-oriented generation (e.g. summarization, table-to-text).
+
+References
+
+Chen An, Jiangtao Feng, Kai Lv, Lingpeng Kong, Xipeng Qiu, and Xuanjing Huang. 2022. Cont: Contrastive neural text generation. ArXiv , abs/2205.14690.
+
+Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, Sandhini Agarwal, Ariel Herbert-Voss, Gretchen Krueger, Tom Henighan, Rewon Child, Aditya Ramesh, Daniel Ziegler, Jeffrey Wu, Clemens Winter, Chris Hesse, Mark Chen, Eric Sigler,
+
+Mateusz Litwin, Scott Gray, Benjamin Chess, Jack Clark, Christopher Berner, Sam McCandlish, Alec Radford, Ilya Sutskever, and Dario Amodei. 2020. Language models are few-shot learners. In Advances in Neural Information Processing Systems , volume 33, pages 1877-1901. Curran Associates, Inc.
+
+Alexandra DeLucia, Aaron Mueller, Xiang Lisa Li, and João Sedoc. 2020. Decoding methods for neural narrative generation. CoRR , abs/2010.07375.
+
+Bryan Eikema and Wilker Aziz. 2020. Is map decoding all you need? the inadequacy of the mode in neural machine translation. In COLING , pages 4506-4520.
+
+Angela Fan, Mike Lewis, and Yann Dauphin. 2018. Hierarchical neural story generation. In Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 889-898, Melbourne, Australia. Association for Computational Linguistics.
+
+Tianyu Gao, Xingcheng Yao, and Danqi Chen. 2021. SimCSE: Simple contrastive learning of sentence embeddings. In Empirical Methods in Natural Language Processing (EMNLP) .
+
+ H. Paul Grice. 1975. Logic and conversation. In Peter Cole and Jerry L. Morgan, editors, Speech Acts , volume 3 of Syntax and Semantics .
+
+He He, Nanyun Peng, and Percy Liang. 2019. Pun generation with surprise. In Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long and Short Papers) , pages 1734-1744, Minneapolis, Minnesota. Association for Computational Linguistics.
+
+Ari Holtzman, Jan Buys, Li Du, Maxwell Forbes, and Yejin Choi. 2020. The curious case of neural text degeneration. In International Conference on Learning Representations .
+
+Laurence Horn. 1984. Toward a new taxonomy for pragmatic inference: Q-based and r-based implicature. Meaning, form, and use in context: Linguistic applications , 11:42.
+
+Alex M Lamb, Anirudh Goyal ALIAS PARTH GOYAL, Ying Zhang, Saizheng Zhang, Aaron C Courville, and Yoshua Bengio. 2016. Professor forcing: A new algorithm for training recurrent networks. In Advances in Neural Information Processing Systems , volume 29. Curran Associates, Inc.
+
+Stephen C Levinson. 2000. Presumptive Meanings: The Theory of Generalized Conversational Implicature . MIT Press.
+
+Jiwei Li, Michel Galley, Chris Brockett, Jianfeng Gao, and Bill Dolan. 2016. A diversity-promoting objective function for neural conversation models. In Proceedings of the 2016 Conference of the North
+
+American Chapter of the Association for Computational Linguistics: Human Language Technologies , pages 110-119, San Diego, California. Association for Computational Linguistics.
+
+Xiang Lisa Li and Percy Liang. 2021. Prefix-tuning: Optimizing continuous prompts for generation. In Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing (Volume 1: Long Papers) , pages 45824597, Online. Association for Computational Linguistics.
+
+Alisa Liu, Maarten Sap, Ximing Lu, Swabha Swayamdipta, Chandra Bhagavatula, Noah A. Smith, and Yejin Choi. 2021. DExperts: Decoding-time controlled text generation with experts and anti-experts. In Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing (Volume 1: Long Papers) , pages 6691-6706, Online. Association for Computational Linguistics.
+
+Joshua Maynez, Shashi Narayan, Bernd Bohnet, and Ryan McDonald. 2020. On faithfulness and factuality in abstractive summarization. In Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics , pages 1906-1919, Online. Association for Computational Linguistics.
+
+Clara Meister, Tiago Pimentel, Gian Wiher, and Ryan Cotterell. 2022. Typical decoding for natural language generation. CoRR , abs/2202.00666.
+
+Stephen Merity, Caiming Xiong, James Bradbury, and Richard Socher. 2017. Pointer sentinel mixture models. In International Conference on Learning Representations .
+
+Romain Paulus, Caiming Xiong, and Richard Socher. 2018. A deep reinforced model for abstractive summarization. In International Conference on Learning Representations .
+
+Krishna Pillutla, Swabha Swayamdipta, Rowan Zellers, John Thickstun, Sean Welleck, Yejin Choi, and Zaid Harchaoui. 2021. MAUVE: Measuring the gap between neural text and human text using divergence frontiers. In Advances in Neural Information Processing Systems .
+
+Alec Radford, Jeff Wu, Rewon Child, David Luan, Dario Amodei, and Ilya Sutskever. 2019. Language models are unsupervised multitask learners. https://openai.com/blog/better-language-models/.
+
+Marc'Aurelio Ranzato, Sumit Chopra, Michael Auli, and Wojciech Zaremba. 2016. Sequence level training with recurrent neural networks. In 4th International Conference on Learning Representations, ICLR 2016, San Juan, Puerto Rico, May 2-4, 2016, Conference Track Proceedings .
+
+Yixuan Su and Nigel Collier. 2022. Contrastive search is what you need for neural text generation. arXiv preprint arXiv:2210.14140 .
+
+Yixuan Su, Tian Lan, Yan Wang, Dani Yogatama, Lingpeng Kong, and Nigel Collier. 2022. A contrastive framework for neural text generation. Neurips , abs/2202.06417.
+
+Arun Venkatraman, Martial Hebert, and J.. Bagnell. 2015. Improving multi-step prediction of learned time series models. Proceedings of the AAAI Conference on Artificial Intelligence , 29(1).
+
+Sean Welleck, Ilia Kulikov, Stephen Roller, Emily Dinan, Kyunghyun Cho, and Jason Weston. 2020. Neural text generation with unlikelihood training. In International Conference on Learning Representations .
+
+Sam Wiseman and Alexander M. Rush. 2016. Sequenceto-sequence learning as beam-search optimization. In Proceedings of the 2016 Conference on Empirical Methods in Natural Language Processing , pages 1296-1306, Austin, Texas. Association for Computational Linguistics.
+
+Yonghui Wu, Mike Schuster, Zhifeng Chen, Quoc V Le, Mohammad Norouzi, Wolfgang Macherey, Maxim Krikun, Yuan Cao, Qin Gao, Klaus Macherey, et al. 2016. Google's neural machine translation system: Bridging the gap between human and machine translation. arXiv preprint arXiv:1609.08144 .
+
+Yukun Zhu, Ryan Kiros, Richard Zemel, Ruslan Salakhutdinov, Raquel Urtasun, Antonio Torralba, and Sanja Fidler. 2015. Aligning books and movies: Towards story-like visual explanations by watching movies and reading books. In arXiv preprint arXiv:1506.06724 .
+
+A CD-Score Analysis
+
+In order to emprically justify our contrastive objective, we report the likelihood scores and contrastive scores for repetitive text, reference and sampling outputs. As shown in Table 6, we find that reference text scores highest under our contrastive loss objective, whereas the likelihood maximization objective ranks the undesired repetitive text the highest.
+
+Averaging across the wikitext data, repetitive text receives a likelihood score of -0.79 per token, reference text receives -3.20, and sampling output receives -2.93. Contrastive objective on the other hand, assigns 0.21 to repetitive text, 0.62 to reference text, and 0.59 to sampling text. This trend is consistent with observation in the Table 6, and contrastive scores correctly assigns highest ranking to reference text.
+
+B Quantitative Analysis of LM decoding
+
+The pre-trained LMs are flawed in both coherence and repetition, and they make similar mistakes regardless of the sizes: for maxprob decoding, the 4-gram repeat rate is 71% for GPT-2 XL, and 40% for GPT-3 Davinci (both are unacceptably high). For sampling, the coherence score is 0.56 for GPT2 XL and 0.57 for GPT-3 Davinci (both are lower than GPT-2 XL's CD results of 0.69).
+
+C CD as Distinguishability objective
+
+Recall from §3.3, our objective log p EXP ( xcont | xpre ) p AMA ( xcont | xpre ) can intuitively be interpreted as factoring out amateur tendencies from the expert LM. Formally, the argmax xcont of our contrastive objective also maximizes the pointwise mutual information PMI ( xcont , I = 1) , where I is an indicator variable that determines the source of generated text: I = 1 for text generated by the expert and I = 0 for text generated by the amateur.
+
+<!-- formula-not-decoded -->
+
+This leads to a formal interpretation of our objective: it favors text that has high PMI with the indicator variable I = 1 , i.e., the most distinguishable text as having originated from the expert LM, rather than the amateur LM.
+
+D Additional Related Work
+
+Training Methods. Prior works often aim to improve text generation quality by further training a given LM. A common approach is to fine-tune the LMs on domain specific data, which improves the relevance of generated text, but fails to fundamentally address fluency or coherence problems (DeLucia et al., 2020). To tackle these model specific issues, many works craft novel training objectives. For example unlikelihood training (Welleck et al., 2020) explicitly penalizes repetition; contrastive training (Su et al., 2022) separates out the LMhidden states to boost diversity. Furthermore, many methods alleviate exposure bias by combining teacher-forcing and student-forcing at training time (Lamb et al., 2016; Venkatraman et al., 2015; Ranzato et al., 2016; Wiseman and Rush, 2016). Despite the effectiveness of these approaches, they require training model parameters on these crafted objectives, which can be prohibitively expensive for ever-larger models. In contrast, our method uses frozen LMs and requires no training. We simply take off-the-shelf pre-trained language models of different sizes, and exploit their differences to improve text generation quality.
+
+Contrast in Text Generation. The idea of contrast for text generation has been explored in diverse settings. In pun generation, He et al. (2019) contrasts the same LM with global versus local context to select tokens that are plausible globally but surprising locally. In dialog generation, Li et al. (2016) contrasts the same dialog model with and without preceding chat history in order to generate relevant responses. Su et al. (2022) fine-tuned language models on a contrastive training objective to separate token representations, which in turn improves generation diversity.
+
+The closest work to ours is DExpert (Liu et al., 2021), which studies controllable text generation by contrasting an trained expert model (on nontoxic data) and a trained anti-expert model (on toxic data) to produce text that is non-toxic. In this work, we focus on open-ended text generation and show that it is possible to get domain- and task-agnostic anti-experts simply by using a smaller LM. Contrastive decoding uses the observation that smaller LMs are more susceptible to the undesirable behaviors, and contrasts off-the-shelf LMs of different scales to produce high quality text, without any training.
+
+<!-- missing-text -->
+
+Table 6: We report the likelihood scores and contrastive scores for repetitive text, reference and sampling outputs. We find that reference text scores highest under our contrastive loss objective, whereas the likelihood maximization objective ranks the undesired repetitive text the highest.
+
+E Potential Ethics Risks and Societal Impact
+
+Contrastive decoding aims to produce fluent and coherent continuation of a given prompt. However, as the generation quality improves, one can imagine more powerful disinformation (e.g., automatic generation of fake news) that are hard to distinguish from human written text. Towards this end, it might be worth augmenting current decoding techniques to also watermark the generated outputs without affecting its quality.
+
+F Compute Resources
+
+We use NVIDIA RTX A5000 and A100 GPU to run the decoding experiments. All the decoding is done by one GPU. For OPT-13b, we use fp16 to reduce the required amount of GPU memories. CD generates one continuation of length 256 tokens (with batchsize of 1) in 8 seconds on NVIDIA RTX A5000.
+
+G Human Evaluation Details
+
+We report the instruction given to the Amazon mechanical turkers in Figure 4, and we explain the annotation results will be used towards distinguishing text generation qualities.
+
+We conduct a pre-qualification round of 60 people to ensure the participants understand the task and are capable of judging fluency and coherence, resulting in around 20 people qualified.
+
+We assign 20 minutes to each HITs, which consists of three comparison tasks. Each HITs takes 14 minutes on average to complete. We pay $4.5 for each HITs, which adds up to an hourly payment of $18, which is adequate given the participants' demographic. Our human evaluation project received approval from the ethics review.
+
+H Expert and Amateurs from Different model Families
+
+In the main paper, we focus in the settings where the experts and the amateurs come from the same model family (e.g., GPT-2 small v.s. GPT-2 XL; OPT-125M v.s. OPT-13B), because the tokenizer is the same within each model family. However, contrastive decoding still works when the expert and amateur models come from different model families. In particular, we use GPT-J as the expert and GPT-2 small as the amateur (the two models are pre-trained on different datasets by different companies, but share the same tokenizer). We find that CD yields MAUVE=0.93, DIV=0.91, which is better than GPT-2 XL's CD results.
+
+I Full Automatic Evaluation Results
+
+In Table 1, we report diversity, MAUVE, and COH. In the tables (Table 7 for wikitext, Table 8 for wikinews, Table 9 for story), we also include REP-N metrics for n = 2 3 4 , , and perplexity (PPL) under GTP-2 medium, along with MAUVE, COH and DIV.
+
+J Additional Ablation Results
+
+As shown in Figure 5, we report additional results for the ablation study of amateur temperature. We find that τ ∈ [0 5 . , 1 0] . robustly result in high generation quality.
+
+In Figure 6, we provide additional results on the amateur-expert size combinations for the OPT family and GPT-2 family. We find that within the same LM family, the larger scale gap between the expert LM versus the amateur LM, the more text quality improves.
+
+K Additional Ablation Results for Sample v.s. Search
+
+Recall in §7.3, we compare sampling CD objective and searching CD objective. Here, we include extra results in Table 10. We find that CD (search) outperform CD (sample) consistently across three domains and three model sizes.
+
+L More Qualitative Examples
+
+We include 6 randomly sampled qualitative examples in Table 12 - 17.
+
+M Variant of CD: Training the Amateur LM
+
+As we mentioned in §3.4, an ideal amateur LM should summarize the failure mode of the expert LM, and we have been using a off-the-shelf amateur LM in the main text (e.g., GPT-2 small, OPT125m). Here, we experiment with learning an amateur model that mimics the degenerate behavior of the expert LM. Precisely, we first randomly sample some prompt of different length from wikipedia dataset, and generate training data by beam searching the expert LM conditioned on the prompts. This training data is representative of the degeneration
+
+Instructions
+
+You are given 3 comparision tasks. For each comparision task, you are given a prompt two different continuations. and
+
+For each prompt, your task is to identify which of the continuations is better based on fluency and coherence. If you aren't sure; select that they are similar.
+
+If you too many wrong; we reserve the right to reject your HIT
+
+[Example 1] [Example 2]
+
+Read the two continuations of the prompt, and answer the 3 following questions about fluency; coherence; and wikipedia like:
+
+Prompt: S{storyo_prompt}
+
+Continuation A: S{storyo_conto}
+
+Continuation B: S{storyo contl}
+
+Fluency (which continuation is written in grammatical English. Note that an incomplete last sentence does not count as a mistake and shouldn't affect fluency):
+
+ Ais more fluent.
+
+ B is more fluent.
+
+ Aand B are similar.
+
+Coherence (which continuation stays more on topic with the prompt?):
+
+ Ais more coherent.
+
+ B is more coherent.
+
+ Aand B are similar.
+
+<!-- missing-text -->
+
+Table 7: Automatic evaluation results for wikitext.
+
+<!-- missing-text -->
+
+<!-- missing-text -->
+
+<!-- missing-text -->
+
+<!-- missing-text -->
+
+<!-- missing-text -->
+
+<!-- missing-text -->
+
+<!-- missing-text -->
+
+<!-- missing-text -->
+
+<!-- missing-text -->
+
+<!-- missing-text -->
+
+<!-- missing-text -->
+
+<!-- missing-text -->
+
+in the expert LM, and tends to be highly repetitive. We then prefix-tune (Li and Liang, 2021) a GPT-2 model on this training data to obtain the final amateur LM. Here, we use prefix-tuning as the lightweight adaptation method which only requires learning and storing a soft prompt of length 10. At decoding time, we just use the prefix-tuned model as the amateur, and apply contrastive decoding in §3.3. We denote this variant of CD as beamprefix and report automatic evaluation results in Table 7, Table 8, and Table 9.
+
+We also include human evaluation results, which compares the beamprefix variant of CD with nucleus sampling results. As shown in Table 18, we find that CD (beamprefix) also attain significantly better performance than nucleus sampling.
+
+<!-- missing-text -->
+
+Table 18: Human evaluation results for wikipedia, wikinews, story datasets. We describe the details of CD (beamprefix) in Appendix M.
