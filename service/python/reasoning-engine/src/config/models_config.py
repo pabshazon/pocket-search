@@ -34,8 +34,11 @@ from .device_config import DeviceConfig
 @dataclass
 class ModelConfig:
     name: str
-    max_length: int                 = field(default=None)
-    device_priority: list[str]      = field(default_factory=lambda: [ "mps", "cuda", "cpu"])
+    # Input/Output constraints (all in tokens unless specified otherwise)
+    max_tokens_input_length: int    = field(default=None)
+    max_tokens_output_length: int   = field(default=None)
+    min_tokens_output_length: int   = field(default=None)
+    device_priority: list[str]      = field(default_factory=lambda: ["mps", "cuda", "cpu"])
     model_params: Dict[str, Any]    = field(default_factory=dict)
     model_class: Optional[Any]      = None
     _model: Optional[Any]           = field(default=None, init=False, repr=False)
@@ -137,7 +140,7 @@ class ModelConfig:
                 )
             except Exception as e:
                 logger.error(f"Failed to load tokenizer for {self.name} from {self.local_path}: {str(e)}")
-                raise
+                raise ValueError(f"Error: {str(e)}")
         return self._tokenizer
 
     @property
@@ -191,6 +194,7 @@ class ModelsConfig:
     _instance = None
     _is_initialized = False
 
+
     @classmethod
     def download_all_models(cls):
         """Download all models to local storage"""
@@ -243,9 +247,37 @@ class ModelsConfig:
             "label2id": {label: i for i, label in enumerate(subtypes_list)}
         }
 
+    # SUMMARIZER = ModelConfig(
+    #     name="ibm-granite/granite-3.1-8b-instruct",
+    #     max_length=128000,
+    #     model_class=AutoModelForCausalLM,
+    #     device_priority=["cuda", "cpu"],
+    #     model_params={
+    #         # Basic model loading parameters
+    #         "torch_dtype": "bfloat16",
+    #         "low_cpu_mem_usage": True,
+    #         "device_map": "auto",
+    #
+    #         # Generation configuration
+    #         "generation_config": {
+    #             "max_length": 128000,
+    #             "min_length": 100,
+    #             "length_penalty": 1.2,
+    #             "max_new_tokens": 1024,
+    #             "temperature": 0.7,
+    #             "top_p": 0.9,
+    #             "do_sample": True,
+    #             "num_beams": 4,
+    #             "early_stopping": True,
+    #             "no_repeat_ngram_size": 3
+    #         }
+    #     }
+    # )
     SUMMARIZER = ModelConfig(
         name="facebook/bart-base",
-        max_length=1024,
+        max_tokens_input_length=1024,
+        max_tokens_output_length=142,
+        min_tokens_output_length=56,
         model_class=AutoModelForSeq2SeqLM,
         device_priority=["mps", "cuda", "cpu"],
         model_params={
@@ -256,16 +288,16 @@ class ModelsConfig:
             "eos_token_id": 2,
             "decoder_start_token_id": 2,
             "forced_eos_token_id": 2,
-            
+
             # Generation configuration parameters
             "max_length": 142,
             "min_length": 56,
-            "length_penalty": 2.0,
+            # "length_penalty": 2.0,
             "max_new_tokens": 1024,
             "do_sample": False
         }
     )
-        
+
     # Summarization Models
     # SUMMARIZER = ModelConfig(
     #     name="google/long-t5-tglobal-base",
@@ -288,7 +320,9 @@ class ModelsConfig:
     # Document Layout Analysis
     LAYOUT = ModelConfig(
         name="microsoft/layoutlmv3-base",
-        max_length=512,
+        max_tokens_input_length=512,  # @todo review - placeholder
+        max_tokens_output_length=142, # @todo review - placeholder
+        min_tokens_output_length=56,  # @todo review - placeholder
         model_class=LayoutLMv3ForSequenceClassification,
         model_params={
             "padding": True,
@@ -299,7 +333,9 @@ class ModelsConfig:
     # Code Analysis
     CODE = ModelConfig(
         name="microsoft/codebert-base",
-        max_length=512,
+        max_tokens_input_length=512,  # @todo review - placeholder
+        max_tokens_output_length=142,  # @todo review - placeholder
+        min_tokens_output_length=56,  # @todo review - placeholder
         model_class=RobertaForSequenceClassification,
         model_params={
             "padding": True,
@@ -310,7 +346,9 @@ class ModelsConfig:
     # Visual Language Model
     VISION = ModelConfig(
         name="dandelin/vilt-b32-finetuned-vqa",
-        max_length=512,
+        max_tokens_input_length=512,  # @todo review - placeholder
+        max_tokens_output_length=142,  # @todo review - placeholder
+        min_tokens_output_length=56,  # @todo review - placeholder
         model_class=ViltForQuestionAnswering,
         model_params={
             "padding": True,
@@ -331,7 +369,9 @@ class ModelsConfig:
 
     LLM_LLAMA = ModelConfig(
         name="meta-llama/Llama-3.2-1B-Instruct",
-        max_length=2048,
+        max_tokens_input_length=2048,  # @todo review - placeholder
+        max_tokens_output_length=142, # @todo review - placeholder
+        min_tokens_output_length=56,  # @todo review - placeholder
         model_class=AutoModelForCausalLM,
         model_params={
             "padding": True,
@@ -342,7 +382,9 @@ class ModelsConfig:
 
     LLM = ModelConfig(
         name="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-        max_length=2048,
+        max_tokens_input_length=2048,  # @todo review - placeholder
+        max_tokens_output_length=142, # @todo review - placeholder
+        min_tokens_output_length=56,  # @todo review - placeholder
         model_class=AutoModelForCausalLM,
         model_params={
             "padding": True,
@@ -353,7 +395,9 @@ class ModelsConfig:
     # Document Type Classifier
     CLASSIFIER_DOC_TYPE = ModelConfig(
         name="allenai/longformer-base-4096",
-        max_length=4096,
+        max_tokens_input_length=4096,  # @todo review - placeholder
+        max_tokens_output_length=142, # @todo review - placeholder
+        min_tokens_output_length=56,  # @todo review - placeholder
         model_class=AutoModelForSequenceClassification,
         model_params=_build_doc_type_params()
     )
@@ -361,7 +405,9 @@ class ModelsConfig:
     # Document Subtype Classifier
     CLASSIFIER_DOC_SUBTYPE = ModelConfig(
         name="allenai/longformer-base-4096",
-        max_length=4096,
+        max_tokens_input_length=4096,  # @todo review - placeholder
+        max_tokens_output_length=142, # @todo review - placeholder
+        min_tokens_output_length=56,  # @todo review - placeholder
         model_class=AutoModelForSequenceClassification,
         model_params=_build_doc_subtype_params()
     )
@@ -369,8 +415,9 @@ class ModelsConfig:
     # Legal Document Classifier
     CLASSIFIER_LEGAL = ModelConfig(
         name="nlpaueb/legal-bert-base-uncased",  # Legal domain-specific BERT
-        max_length=512,  # Standard BERT max length
-        model_class=AutoModelForSequenceClassification,
+        max_tokens_input_length=512,  # @todo review - placeholder
+        max_tokens_output_length=142, # @todo review - placeholder
+        min_tokens_output_length=56,  # @todo review - placeholder        model_class=AutoModelForSequenceClassification,
         model_params={
             "padding": True,
             "truncation": True,
@@ -380,8 +427,9 @@ class ModelsConfig:
 
     LLM_OLLAMA = ModelConfig(
         name="ollama://phi3:medium-128k",
-        max_length=4096,
-        model_class=OllamaService,
+        max_tokens_input_length=4096,  # @todo review - placeholder
+        max_tokens_output_length=142, # @todo review - placeholder
+        min_tokens_output_length=56,  # @todo review - placeholder        model_class=OllamaService,
         model_params={
             "options": {
                 "temperature": 0.7,
@@ -394,3 +442,5 @@ class ModelsConfig:
     DOCLING = ModelConfig(
         name="docling",
     )
+
+

@@ -9,7 +9,7 @@ class Analyzer:
         file_ext = hnode.fs_file_extension.strip().lower()
         if file_ext == "pdf":
             pdf_analyzer    = PdfAnalyzer()
-            pdf_result      = pdf_analyzer.analyze(hnode.fs_full_path)
+            pdf_result      = pdf_analyzer.transform_to_md(hnode.fs_full_path)
             pdf_metadata    = pdf_result.metadata
             return pdf_metadata
         else:

@@ -12,7 +12,7 @@ class FileConverter:
     @staticmethod
     def pdf_to(output_type, pdf_path):
         try:
-            doc_converter             = DocumentConverter(
+            doc_converter = DocumentConverter(
                 allowed_formats=[InputFormat.PDF],
                 format_options={
                     InputFormat.PDF: PdfFormatOption(

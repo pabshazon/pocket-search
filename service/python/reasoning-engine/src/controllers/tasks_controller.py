@@ -8,7 +8,8 @@ from src.service.database.models.hnode  import HNode
 logger = get_logger(__name__)
 
 class TasksController:
-    def consume_tasks_table(self):
+    @staticmethod
+    async def consume_tasks_table():
         try:
             tasks = Task.fetch_all_tasks()
             logger.debug(f">> TASK: Consuming {len(tasks)} tasks from SQLite table...")
@@ -16,7 +17,7 @@ class TasksController:
                 if task.name == "Analyze-new":
                     hnode = HNode.fetch_by_hyper_node_id(task.hyper_node_id)
                     if hnode.is_file == 1:
-                        Analyzer.analyze_file(hnode)
+                        await Analyzer.analyze_file(hnode)
                     elif hnode.is_folder == 1:
                         Analyzer.analyze_folder(hnode)
                     else:

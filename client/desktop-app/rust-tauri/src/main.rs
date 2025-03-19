@@ -57,7 +57,7 @@ fn main() {
 
             // HACK @todo remove for prod.
             tauri::async_runtime::spawn(async {
-                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
                 if let Err(e) = perform_tasks().await {
                     eprintln!("Error performing tasks: {}", e);
                 }

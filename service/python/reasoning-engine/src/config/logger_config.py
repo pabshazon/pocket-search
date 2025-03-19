@@ -9,14 +9,14 @@ class LoggerConfig:
         
     def get_format_string(self) -> str:
         """Returns the format string based on configuration"""
-        base_format = '%(message)s - [%(asctime)s - %(levelname)s'
+        base_format = '[%(asctime)s - %(levelname)s] %(message)s'
         filepath_format = ' - %(pathname)s:%(lineno)d'
         
-        return f'{base_format}{filepath_format}]' if self.show_filepath else f'{base_format}]'
+        return f'{base_format}{filepath_format}' if self.show_filepath else f'{base_format}'
     
     def configure(
         self,
-        level: int = logging.INFO,
+        level: int = logging.DEBUG,
         log_file: Optional[str] = None
     ) -> None:
         """Configure the root logger with the specified settings"""

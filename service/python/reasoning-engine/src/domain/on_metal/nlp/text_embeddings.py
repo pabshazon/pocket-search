@@ -1,6 +1,8 @@
 import string
 from sentence_transformers import SentenceTransformer
 
+
+# @todo move this model management to model config files and system - is the key text embeddings for pdf text as of today.
 default_model_name  = "sentence-transformers/all-MiniLM-L6-v2"
 
 

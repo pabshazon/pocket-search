@@ -91,7 +91,7 @@ class DocumentTypeClassifier:
             self.logger.warning(f"Context estimation failed: {str(e)}. Falling back to default safe length.")
         
         # Default approach: assume ~4 characters per token.
-        safe_max_chars = self.llm_config.max_length * 4
+        safe_max_chars = self.llm_config.max_tokens_input_length * 4
 
         if len(text) <= safe_max_chars:
             return text
