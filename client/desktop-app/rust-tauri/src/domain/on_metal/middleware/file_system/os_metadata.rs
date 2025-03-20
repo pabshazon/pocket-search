@@ -1,7 +1,7 @@
 #[cfg(target_os = "macos")]
 mod serde_helpers {
+    use serde::ser::{Serializer, SerializeStruct};
     use libc::timespec;
-    use serde::ser::{SerializeStruct, Serializer};
 
     pub fn serialize_timespec<S>(ts: &timespec, serializer: S) -> Result<S::Ok, S::Error>
     where
