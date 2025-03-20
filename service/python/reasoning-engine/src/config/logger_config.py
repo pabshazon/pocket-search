@@ -16,7 +16,7 @@ class LoggerConfig:
     
     def configure(
         self,
-        level: int = logging.DEBUG,
+        level: int = logging.INFO,  # @todo fix issue that this overrides main.py config
         log_file: Optional[str] = None
     ) -> None:
         """Configure the root logger with the specified settings"""

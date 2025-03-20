@@ -76,35 +76,47 @@ class ModelConfig:
                 os.environ['HF_DATASETS_OFFLINE'] = '0'
                 
                 # Set up authentication token for accessing gated repositories.
-                # If the environment variable HUGGINGFACE_TOKEN is not set, use True to rely on local credentials.
                 auth_token = os.getenv("HUGGINGFACE_TOKEN") or True
 
                 try:
-                    # First create the configuration with our parameters
-                    config = AutoConfig.from_pretrained(
+                    base_config = AutoConfig.from_pretrained(
                         self.name,
-                        use_auth_token=auth_token,
-                        **self.model_params
+                        token=auth_token,
                     )
+                    
+                    # Apply only non-generation parameters to base_config
+                    non_gen_params = {k: v for k, v in self.model_params.items() 
+                                    if k != 'generation_config'}
+                    for key, value in non_gen_params.items():
+                        setattr(base_config, key, value)
                     
                     # Download tokenizer and model
                     logger.info(f"Downloading tokenizer for {self.name}")
-                    tokenizer = AutoTokenizer.from_pretrained(self.name, use_auth_token=auth_token)
+                    tokenizer = AutoTokenizer.from_pretrained(self.name, token=auth_token)
                     
                     model_class = self.model_class or AutoModel
                     logger.info(f"Downloading model {self.name} using class {model_class.__name__}")
                     model = model_class.from_pretrained(
                         self.name,
-                        config=config,
+                        config=base_config,
                         ignore_mismatched_sizes=True,
-                        use_auth_token=auth_token
+                        token=auth_token
                     )
+                    
+                    # Handle generation config separately
+                    if 'generation_config' in self.model_params:
+                        logger.info("Applying generation configuration")
+                        from transformers import GenerationConfig
+                        gen_config = GenerationConfig(**self.model_params['generation_config'])
+                        model.generation_config = gen_config
                     
                     # Save everything to local storage
                     logger.info(f"Saving tokenizer, config and model to {self.local_path}")
-                    config.save_pretrained(str(self.local_path))
+                    base_config.save_pretrained(str(self.local_path))
                     tokenizer.save_pretrained(str(self.local_path))
                     model.save_pretrained(str(self.local_path))
+                    if 'generation_config' in self.model_params:
+                        model.generation_config.save_pretrained(str(self.local_path))
                     
                 finally:
                     # Restore original offline settings
@@ -130,7 +142,7 @@ class ModelConfig:
     def tokenizer(self):
         if self._tokenizer is None:
             try:
-                logger.info(f"Loading tokenizer from local path: {self.local_path}")
+                logger.debug(f"Loading tokenizer from local path: {self.local_path}")
                 if not self.local_path.exists():
                     raise ValueError(f"Model path does not exist: {self.local_path}. Please run download_all_models() first.")
                 self._tokenizer = AutoTokenizer.from_pretrained(
@@ -149,7 +161,7 @@ class ModelConfig:
             try:
                 # Special handling for Ollama models
                 if self.name.startswith("ollama://"):
-                    logger.info(f"Initializing Ollama model: {self.name}")
+                    logger.debug(f"Initializing Ollama model: {self.name}")
                     self._model = self.model_class.from_pretrained(
                         self.name,
                         **self.model_params
@@ -157,16 +169,17 @@ class ModelConfig:
                     return self._model
 
                 # Regular HuggingFace model loading
-                logger.info(f"Loading model from local path: {self.local_path}")
+                logger.debug(f"Loading model from local path: {self.local_path}")
                 if not self.local_path.exists():
                     raise ValueError(f"Model path does not exist: {self.local_path}. Please run download_all_models() first.")
                 
                 # First create the configuration with our parameters
+                non_gen_params = {k: v for k, v in self.model_params.items() if k != "generation_config"}
                 config = AutoConfig.from_pretrained(
                     str(self.local_path),
                     local_files_only=True,
                     trust_remote_code=False,
-                    **self.model_params
+                    **non_gen_params
                 )
                 
                 # Then initialize the model with this config
@@ -246,47 +259,6 @@ class ModelsConfig:
             "id2label": {i: label for i, label in enumerate(subtypes_list)},
             "label2id": {label: i for i, label in enumerate(subtypes_list)}
         }
-
-    # SUMMARIZER = ModelConfig(
-    #     name="ibm-granite/granite-3.1-8b-instruct",
-    #     max_length=128000,
-    #     model_class=AutoModelForCausalLM,
-    #     device_priority=["cuda", "cpu"],
-    #     model_params={
-    #         # Basic model loading parameters
-    #         "torch_dtype": "bfloat16",
-    #         "low_cpu_mem_usage": True,
-    #         "device_map": "auto",
-    #
-    #         # Generation configuration
-    #         "generation_config": {
-    #             "max_length": 128000,
-    #             "min_length": 100,
-    #             "length_penalty": 1.2,
-    #             "max_new_tokens": 1024,
-    #             "temperature": 0.7,
-    #             "top_p": 0.9,
-    #             "do_sample": True,
-    #             "num_beams": 4,
-    #             "early_stopping": True,
-    #             "no_repeat_ngram_size": 3
-    #         }
-    #     }
-    # )
-    SUMMARIZER = ModelConfig(
-        name="facebook/bart-large-cnn",
-        max_tokens_input_length=1024,
-        max_tokens_output_length=256,
-        min_tokens_output_length=56,
-        model_class=AutoModelForSeq2SeqLM,
-        device_priority=["mps", "cuda", "cpu"],
-        model_params={
-            "max_length": 256,
-            "min_length": 56,
-            "do_sample": False
-        }
-    )
-
 
     # SUMMARIZER = ModelConfig(
     #     name="facebook/bart-large-cnn",
@@ -458,4 +430,28 @@ class ModelsConfig:
         name="docling",
     )
 
+    SUMMARIZER = ModelConfig(
+        name="facebook/bart-large-cnn",
+        max_tokens_input_length=1024,
+        max_tokens_output_length=142,
+        min_tokens_output_length=56,
+        model_class=AutoModelForSeq2SeqLM,
+        device_priority=["mps", "cuda", "cpu"],
+        model_params={
+            # Only model-specific parameters here
+            "decoder_start_token_id": 2,
+
+            # All generation-related parameters in generation_config
+            "generation_config": {
+                "max_length": 142,
+                "min_length": 56,
+                "length_penalty": 2.0,
+                "num_beams": 4,
+                "early_stopping": True,
+                "do_sample": False,
+                "no_repeat_ngram_size": 3,
+                "forced_bos_token_id": 0  # Moved here from base config
+            }
+        }
+    )
 

@@ -26,7 +26,7 @@ if __name__ == "__main__":
     # Initialize with custom settings
     init_logging(
         show_filepath=False,
-        level=logging.DEBUG,
+        level=logging.INFO,
         log_file="fastapi.log"
     )
     

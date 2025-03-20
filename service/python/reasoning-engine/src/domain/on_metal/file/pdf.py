@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 
 
 @dataclass
-class PdfAnalysisResult:
+class PdfAnalysisResults:
     metadata:        Dict[str, Any]
     structure:       Dict[str, Any]
     summary:         str
@@ -31,7 +31,7 @@ class PdfAnalysisResult:
     semantic_chunks: List[Dict[str, Any]]
     overlapped_fixed_chunks: List[Dict[str, Any]]
 
-class PdfAnalyzer:
+class PdfFile:
     @staticmethod
     def transform_to_md(file_path: str, persist: bool =True):
         logger.info(f"> Transforming PDF file to MD: {file_path}")
@@ -56,7 +56,7 @@ class PdfAnalyzer:
             conv_result = doc_converter.convert(input_doc_path)
             end_time = time.time() - start_time
 
-            logger.info(f"Document converted tro docling in {end_time:.2f} seconds.")
+            logger.debug(f"Document converted to docling in {end_time:.2f} seconds.")
 
             output_dir = DOCS_REPOSITORY_PATH
             output_dir.mkdir(parents=True, exist_ok=True)

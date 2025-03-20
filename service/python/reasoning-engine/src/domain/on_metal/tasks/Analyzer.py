@@ -1,18 +1,18 @@
 import os
 
-from src.service.database.models.hnode              import HNode
-from src.domain.on_metal.file.pdf_analyzer          import PdfAnalyzer, PdfAnalysisResult
-from src.domain.on_metal.nlp.model.text_summarizer  import TextSummarizer
+from src.service.database.models.hnode             import HNode
+from src.domain.on_metal.file.pdf                  import PdfFile, PdfAnalysisResults
+from src.domain.on_metal.nlp.model.text_summarizer import TextSummarizer
 
 from src.domain.on_metal.logger import get_logger
 logger = get_logger(__name__)
 
 class Analyzer:
     @staticmethod
-    async def analyze_file(hnode: HNode) -> PdfAnalysisResult | None:  # @todo add interface for results of any file type instead of None.
+    async def analyze_file(hnode: HNode) -> PdfAnalysisResults | None:  # @todo add interface for results of any file type instead of None.
         file_ext = hnode.fs_file_extension.strip().lower()
         if file_ext == "pdf":
-            result = PdfAnalysisResult(
+            result = PdfAnalysisResults(
                 metadata                = {},
                 summary                 = "",
                 structure               = {},
@@ -21,19 +21,19 @@ class Analyzer:
                 naive_chunks            = [{}],
                 overlapped_fixed_chunks = [{}]
             )
-            # @hack below to test quicker
+            # @hack below to test quicker @todo remove
             # pdf_as_md         = PdfAnalyzer.transform_to_md(hnode.fs_full_path)
-            pdf_as_md           = PdfAnalyzer.get_md_from_file(hnode.fs_full_path)
+            logger.info(f"> Start Analysis task for {hnode.fs_full_path}")
+            pdf_as_md           = PdfFile.get_md_from_file(hnode.fs_full_path)
 
             text_summarizer     = TextSummarizer()
             pdf_summary_s2s     = await text_summarizer.summarize_with_seq_to_seq(pdf_as_md)
-            # pdf_summary_decoder = text_summarizer.summarize_with_decoder_llm(pdf_as_md)
-            pdf_metadata        = PdfAnalyzer.extract_metadata(hnode.fs_full_path)
+            pdf_metadata        = PdfFile.extract_metadata(hnode.fs_full_path)
 
             result.summary  = pdf_summary_s2s
             result.metadata = pdf_metadata
 
-            logger.info("Final Summary & Metadata:")
+            logger.info("> Final Summary & Metadata:")
             logger.info(result.summary)
             logger.info(result.metadata)
             return result

@@ -6,7 +6,7 @@ _logger_config: Optional[LoggerConfig] = None
 
 def init_logging(
     show_filepath: bool = False,
-    level: int = logging.DEBUG,
+    level: int = logging.INFO,
     log_file: Optional[str] = None
 ) -> None:
     """
