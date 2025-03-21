@@ -1,8 +1,9 @@
 use anyhow::Result;
-use sqlx::sqlite::SqlitePool;
 use std::env;
 use tauri::{command, AppHandle, Manager};
 use tokio::runtime::Runtime;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use std::str::FromStr;
 
 #[command]
 pub fn init_db(app_handle: &AppHandle) -> Result<(), String> {
@@ -28,7 +29,6 @@ pub fn init_db(app_handle: &AppHandle) -> Result<(), String> {
             .map_err(|e| format!("Failed to create database file: {}", e))?;
     }
 
-    println!("Database OK.");
     Ok(())
 }
 
@@ -36,50 +36,69 @@ pub fn init_db(app_handle: &AppHandle) -> Result<(), String> {
 pub fn run_db_migrations(app_handle: &AppHandle) -> Result<(), String> {
     println!("Initializing db migrations...");
 
-    // @todo This is a hack to get the migrations path. Move it to a config file that can work for dev and prod.
-    let pocket_github_path: std::result::Result<String, std::env::VarError> =
-        env::var("POCKET_GITHUB_PATH");
-    let migrations_path: String = format!(
-        "{}client/desktop-app/db_migrations",
-        pocket_github_path.unwrap()
-    );
+    // Get and handle POCKET_GITHUB_PATH environment variable
+    let pocket_github_path = env::var("POCKET_GITHUB_PATH")
+        .map_err(|e| format!("Failed to get POCKET_GITHUB_PATH: {}", e))?;
+
+    let migrations_path = format!("{}client/desktop-app/db_migrations", pocket_github_path);
+    let sqlite_vector_extension = format!("{}client/desktop-app/sqlite/vec0.dylib", pocket_github_path);
+
+    println!("migrations_path: {}", migrations_path);
+    println!("SQLite extension: {}", sqlite_vector_extension);
 
     let app_data_dir = app_handle
         .path()
         .app_data_dir()
         .map_err(|e| format!("Failed to get app data directory: {}", e))?;
 
-    if cfg!(debug_assertions) {
-        println!(">> app_data_dir: {:?}", app_data_dir);
-    }
-
     let db_path = app_data_dir.join("pocket-search.db");
     let db_url = format!("sqlite:{}", db_path.to_string_lossy());
 
-    if cfg!(debug_assertions) {
-        println!(">> DB url: {:?}", db_url);
+    if !std::path::Path::new(&sqlite_vector_extension).exists() {
+        return Err(format!("SQLite vector extension not found at: {}", sqlite_vector_extension));
     }
 
-    if cfg!(debug_assertions) {
-        println!(">> DB migrations path: {:?}", migrations_path);
-    }
+    let escaped_extension_path = sqlite_vector_extension.replace("'", "''");
+    println!("escaped_extension_path: {}", escaped_extension_path);
 
     let tokio_runtime =
         Runtime::new().map_err(|e| format!("Failed to create Tokio runtime: {}", e))?;
 
+    println!("Installing SQLite-vector extension...");
+
     tokio_runtime.block_on(async {
-        let pool = SqlitePool::connect(&db_url)
+        let connect_options = SqliteConnectOptions::from_str(&db_url)
+            .map_err(|e| format!("Invalid connection URL: {}", e))?
+            .filename(&db_path)
+            .create_if_missing(true)
+            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+            .pragma("foreign_keys", "ON")
+            .pragma("trusted_schema", "OFF")
+            .pragma("enable_load_extension", "ON")
+            .extension(escaped_extension_path);
+
+        println!("connect_options done.");
+        let pool = SqlitePoolOptions::new()
+            .connect_with(connect_options)
             .await
             .map_err(|e| format!("Failed to connect to database: {}", e))?;
 
-        // Check if the migrations directory exists
+        println!("pool done.");
+
+        let test_query = "SELECT vec_version();";
+        let row: (String,) = sqlx::query_as(test_query)
+            .fetch_one(&pool)
+            .await
+            .map_err(|e| format!("Extension test query failed: {}", e))?;
+
+        println!("sqlite-vec extension loaded. Version: {}", row.0);
+
+        // Confirm migrations directory exists before migrating
         if !std::path::Path::new(&migrations_path).exists() {
-            return Err(format!(
-                "Migrations path does not exist: {}",
-                migrations_path
-            ));
+            return Err(format!("Migrations path does not exist: {}", migrations_path));
         }
 
+        // Run migrations
         sqlx::migrate!("../../../client/desktop-app/db_migrations")
             .run(&pool)
             .await

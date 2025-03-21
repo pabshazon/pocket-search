@@ -26,4 +26,4 @@ fi
 cd ${POCKET_GITHUB_PATH}client/desktop-app
 
 # Start the Tauri application
-npx tauri dev
+npx tauri dev 

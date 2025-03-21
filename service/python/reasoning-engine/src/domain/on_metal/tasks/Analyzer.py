@@ -36,7 +36,18 @@ class Analyzer:
             logger.info("> Final Summary & Metadata:")
             logger.info(result.summary)
             logger.info(result.metadata)
-            return result
+
+            # Store hnode metadata
+            # cs_hnode_summary will contain the summary
+            # cs_hnode_title?
+            # cs_what_is_fs_file_about
+            # cs_explain_contains
+            # cs_what_info_can_be_found
+            # cs_tags_obvious
+            # cs_tags_extended
+
+
+
 
     @staticmethod
     def analyze_folder(hnode: HNode):
