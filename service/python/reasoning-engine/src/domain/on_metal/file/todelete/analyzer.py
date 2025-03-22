@@ -1,6 +1,6 @@
 from typing import Dict, Any
 
-from src.service.database.models.hnode          import HNode
+from src.service.database.sqlite.models.hnode import HNode
 from src.domain.on_metal.tasks.pdf.pdf_analyzer import PdfAnalyzer
 
 class Analyzer:

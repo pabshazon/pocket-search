@@ -1,6 +1,4 @@
-import os
-
-from src.service.database.models.hnode             import HNode
+from src.service.database.sqlite.models.hnode import HNode
 from src.domain.on_metal.file.pdf                  import PdfFile, PdfAnalysisResults
 from src.domain.on_metal.nlp.model.text_summarizer import TextSummarizer
 

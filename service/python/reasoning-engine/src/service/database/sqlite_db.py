@@ -1,12 +1,12 @@
 import os
 import sqlite3
 
-class AppDB:
+class SQLite:
     _instance = None
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(AppDB, cls).__new__(cls)
+            cls._instance = super(SQLite, cls).__new__(cls)
             cls._instance._initialize()
         return cls._instance
 

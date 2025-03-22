@@ -2,8 +2,8 @@ from fastapi import HTTPException
 
 from src.domain.on_metal.logger         import get_logger
 from src.domain.on_metal.tasks.Analyzer import Analyzer
-from src.service.database.models.task   import Task
-from src.service.database.models.hnode  import HNode
+from src.service.database.sqlite.models.task import Task
+from src.service.database.sqlite.models.hnode import HNode
 
 logger = get_logger(__name__)
 
