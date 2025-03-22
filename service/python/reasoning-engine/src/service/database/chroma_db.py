@@ -1,12 +1,12 @@
 import os
-from chromadb import PersistentClient
+from chromadb import PersistentClient, Settings
 
 class Chroma:
     _instance = None
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(PersistentClient, cls).__new__(cls)
+            cls._instance = super(Chroma, cls).__new__(cls)
             cls._instance._initialize()
         return cls._instance
 
@@ -17,11 +17,12 @@ class Chroma:
             os.makedirs(app_data_dir)
 
         self.db_path = app_data_dir
-        self.chroma_client = PersistentClient(path=self.db_path)
+        self.chroma_client = PersistentClient(path=self.db_path, settings=Settings(anonymized_telemetry=False))
 
     def get_client(self):
         return self.chroma_client
 
-    def store_fs_entry_cs_summary(self, fs_entry, cs_summary):
-        pass
-
+    @staticmethod
+    def ensure_metadata_types(metadatas):
+        return {k: (v if isinstance(v, (str, int, float, bool)) else str(v))
+                  for k, v in metadatas.items()}

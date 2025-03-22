@@ -1,4 +1,5 @@
-from src.service.database.sqlite.models.hnode import HNode
+from src.service.database.chroma.models.hnode      import HnodeCollection
+from src.service.database.sqlite.models.hnode      import HNode
 from src.domain.on_metal.file.pdf                  import PdfFile, PdfAnalysisResults
 from src.domain.on_metal.nlp.model.text_summarizer import TextSummarizer
 
@@ -28,23 +29,14 @@ class Analyzer:
             pdf_summary_s2s     = await text_summarizer.summarize_with_seq_to_seq(pdf_as_md)
             pdf_metadata        = PdfFile.extract_metadata(hnode.fs_full_path)
 
-            result.summary  = pdf_summary_s2s
-            result.metadata = pdf_metadata
+            data = {
+                "summary":  pdf_summary_s2s,
+                "metadata": pdf_metadata,
+            }
 
-            logger.info("> Final Summary & Metadata:")
-            logger.info(result.summary)
-            logger.info(result.metadata)
-
-            # Store hnode metadata
-            # cs_hnode_summary will contain the summary
-            # cs_hnode_title?
-            # cs_what_is_fs_file_about
-            # cs_explain_contains
-            # cs_what_info_can_be_found
-            # cs_tags_obvious
-            # cs_tags_extended
-
-
+            logger.info(data)
+            logger.info(type(data))
+            HnodeCollection.upsert_hnode_by_id(hnode.id, data)
 
 
     @staticmethod
