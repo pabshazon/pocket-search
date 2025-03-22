@@ -1,0 +1,340 @@
+use std::path::Path;
+use std::sync::Arc;
+use libsql::{Database, Connection, params};
+use tauri::{AppHandle, Manager};
+
+use crate::domain::on_metal::middleware::file_system::entry_type::EntryType;
+use crate::domain::on_metal::middleware::file_system::file_system_entry::FileSystemEntry;
+
+// Create a type for our database pool
+pub struct DbPool {
+    db: Database,
+}
+
+impl DbPool {
+    pub fn new(path: String) -> Result<Self, String> {
+        let db = Database::open(&path)
+            .map_err(|e| format!("Failed to open LibSQL database: {}", e))?;
+        Ok(Self { db })
+    }
+
+    pub async fn get_conn(&self) -> Result<Connection, String> {
+        self.db.connect()
+            .map_err(|e| format!("Failed to connect to LibSQL: {}", e))
+    }
+}
+
+// Create a state type that can be shared across the application
+pub struct DatabaseState {
+    pool: Arc<DbPool>,
+}
+
+impl DatabaseState {
+    pub fn new(pool: DbPool) -> Self {
+        Self {
+            pool: Arc::new(pool)
+        }
+    }
+}
+
+/// Helper to build the filesystem path to `pocket-search.db`.
+fn build_db_path(app_handle: &AppHandle) -> std::result::Result<String, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+
+    if cfg!(debug_assertions) {
+        println!(">> app_data_dir: {:?}", app_data_dir);
+    }
+
+    let db_path = app_data_dir.join("pocket-search.db");
+    // Convert the path to a `String`. Using `.to_string_lossy()` is usually safe here.
+    Ok(db_path.to_string_lossy().to_string())
+}
+
+/// Get a connection from the pool
+async fn get_connection(state: &DatabaseState) -> std::result::Result<Connection, String> {
+    state.pool.get_conn().await
+}
+
+/// Insert or update the given file system entries in `hyper_node`,
+/// and conditionally create tasks in `task`.
+pub async fn store_file_system_entries(
+    state: &DatabaseState,
+    entries: &[FileSystemEntry],
+    task_trigger_extensions: &[&str],
+) -> std::result::Result<(), String> {
+    println!("a");
+    // Filter out entries with no inode
+    let file_and_folder_entries: Vec<&FileSystemEntry> = entries
+        .iter()
+        .filter(|entry| entry.inode.unwrap_or(0) != 0)
+        .collect();
+
+    if file_and_folder_entries.is_empty() {
+        return Ok(());
+    }
+
+    let conn = get_connection(state).await?;
+
+    println!("b");
+    // Start a transaction
+    conn.execute("BEGIN", params!())
+        .await
+        .map_err(|e| format!("Failed to begin transaction: {:?}", e))?;
+
+    println!("2");
+    let mut hyper_node_ids: Vec<String> = Vec::new();
+
+    // Upsert each entry individually
+    for entry in &file_and_folder_entries {
+        let path_str = entry.path.as_str();
+        let path_obj = Path::new(path_str);
+
+        let fs_file_name = path_obj
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or(path_str);
+
+        let fs_file_extension = path_obj
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+
+        let (is_folder, is_file) = match entry.entry_type {
+            EntryType::Directory => (1, 0),
+            EntryType::File => (0, 1),
+        };
+
+        let is_inside_fs_file = 0;
+        let parent_hyper_node_id: Option<String> = None;
+        let fs_inode = entry.inode.unwrap_or(0) as i64;
+
+        let (fs_device_id, fs_user_id, fs_group_id) = if let Some(ref meta) = entry.os_metadata {
+            (meta.device_id as i64, meta.user_id as i64, meta.group_id as i64)
+        } else {
+            (0, 0, 0)
+        };
+
+        let (cs_what_is_fs_folder_about, cs_what_is_fs_file_about) = match entry.entry_type {
+            EntryType::Directory => (
+                entry
+                    .os_metadata
+                    .as_ref()
+                    .map(|m| serde_json::to_string(m).unwrap_or_default()),
+                None,
+            ),
+            EntryType::File => (
+                None,
+                entry
+                    .os_metadata
+                    .as_ref()
+                    .map(|m| serde_json::to_string(m).unwrap_or_default()),
+            ),
+        };
+
+        let cs_hnode_summary = entry
+            .semantic_metadata
+            .as_ref()
+            .map(|m| serde_json::to_string(m).unwrap_or_default());
+
+        let cs_hnode_title: Option<String> = None;
+
+        // Create a 'name' for your hyper_node
+        let hnode_name = if is_inside_fs_file == 0 {
+            match &parent_hyper_node_id {
+                Some(parent) => format!("{}::{}", path_str, parent),
+                None => path_str.to_owned(),
+            }
+        } else {
+            format!("{}::{}", path_str, fs_file_name)
+        };
+
+        println!("4");
+
+        // We want a "RETURNING id" to see which ID we got
+        let upsert_sql = r#"
+            INSERT INTO hyper_node (
+                name,
+                parent_hyper_node_id,
+                is_folder,
+                is_file,
+                is_inside_fs_file,
+                fs_full_path,
+                fs_file_name,
+                fs_inode,
+                fs_file_extension,
+                fs_file_size,
+                fs_device_id,
+                fs_user_id,
+                fs_group_id,
+                cs_what_is_fs_folder_about,
+                cs_what_is_fs_file_about,
+                cs_hnode_title,
+                cs_hnode_summary
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(name)
+            DO UPDATE SET
+                name = excluded.name,
+                is_folder = excluded.is_folder,
+                is_file = excluded.is_file,
+                is_inside_fs_file = excluded.is_inside_fs_file,
+                fs_file_name = excluded.fs_file_name,
+                fs_inode = excluded.fs_inode,
+                fs_file_extension = excluded.fs_file_extension,
+                fs_file_size = excluded.fs_file_size,
+                fs_device_id = excluded.fs_device_id,
+                fs_user_id = excluded.fs_user_id,
+                fs_group_id = excluded.fs_group_id,
+                cs_what_is_fs_folder_about = excluded.cs_what_is_fs_folder_about,
+                cs_what_is_fs_file_about = excluded.cs_what_is_fs_file_about,
+                cs_hnode_title = excluded.cs_hnode_title,
+                cs_hnode_summary = excluded.cs_hnode_summary
+            RETURNING id
+        "#;
+
+        // Build parameters
+        let params = params!(
+            hnode_name.as_str(),
+            parent_hyper_node_id.as_deref(),
+            is_folder,
+            is_file,
+            is_inside_fs_file,
+            path_str,
+            fs_file_name,
+            fs_inode,
+            fs_file_extension,
+            entry.file_size as i64,
+            fs_device_id,
+            fs_user_id,
+            fs_group_id,
+            cs_what_is_fs_folder_about.as_deref(),
+            cs_what_is_fs_file_about.as_deref(),
+            cs_hnode_title.as_deref(),
+            cs_hnode_summary.as_deref()
+        );
+
+//         println!(params);
+//         println!(upsert_sql);
+
+        // Execute query. `query()` returns `Rows`.
+        let mut rows = match conn.query(upsert_sql, params).await {
+            Ok(r) => r,
+            Err(e) => {
+                // Roll back, then return the error
+                let _ = conn.execute("ROLLBACK", params!()).await;
+                return Err(format!("Failed to upsert file system entry: {:?}", e));
+            }
+        };
+
+        println!("5");
+        // Extract the returned "id" from the first row (if any)
+        while let Ok(Some(row)) = rows.next() {
+            if let Ok(id_str) = row.get::<String>(0) {
+                hyper_node_ids.push(id_str.clone());
+                if cfg!(debug_assertions) {
+                    println!("Upsert returned hyper_node_id: {}", id_str);
+                }
+            }
+        }
+    }
+    println!("6");
+
+    // Filter again for any entries that need tasks
+    let task_entries: Vec<&FileSystemEntry> = file_and_folder_entries
+        .iter()
+        .filter(|entry| {
+            if entry.entry_type == EntryType::Directory {
+                true
+            } else {
+                // Check extension
+                if let Some(ext) = Path::new(&entry.path).extension() {
+                    task_trigger_extensions.contains(&ext.to_str().unwrap_or(""))
+                } else {
+                    false
+                }
+            }
+        })
+        // Now `.map(|e| *e)` to get `&FileSystemEntry` rather than `&&FileSystemEntry`
+        .map(|e| *e)
+        .collect();
+
+    println!("7");
+    // For each task, we match up the newly-upserted hyper_node_ids
+    // (assuming same length order, if that's your intention).
+    for (_entry, hyper_node_id) in task_entries.into_iter().zip(hyper_node_ids.iter()) {
+        let task_name = "Analyze-new";
+        let task_description = "Perform the first analysis for the FS Entry.";
+
+        let check_sql = r#"
+            SELECT COUNT(*) AS count
+            FROM task
+            WHERE name = ?
+              AND description = ?
+              AND hyper_node_id = ?
+              AND priority = 0
+              AND status = 'pending'
+        "#;
+
+        let check_params = params!(
+            task_name,
+            task_description,
+            hyper_node_id.as_str()
+        );
+        println!("8");
+
+        let mut rows = match conn.query(check_sql, check_params).await {
+            Ok(r) => r,
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK", params!()).await;
+                return Err(format!("Failed to check existing task: {:?}", e));
+            }
+        };
+
+        let mut existing_count = 0i64;
+        while let Ok(Some(row)) = rows.next() {
+            if let Ok(count) = row.get::<i64>(0) {
+                existing_count = count;
+            }
+        }
+
+        if existing_count > 0 {
+            println!("Task already pending for hyper_node_id={}; skipping.", hyper_node_id);
+            continue;
+        }
+
+        // Insert a new task
+        let insert_sql = r#"
+            INSERT INTO task (
+                name,
+                description,
+                hyper_node_id,
+                priority,
+                status
+            )
+            VALUES (?, ?, ?, 0, 'pending')
+        "#;
+
+        let insert_params = params!(
+            task_name,
+            task_description,
+            hyper_node_id.as_str()
+        );
+
+        println!("9");
+
+        if let Err(e) = conn.execute(insert_sql, insert_params).await {
+            let _ = conn.execute("ROLLBACK", params!()).await;
+            return Err(format!("Failed to insert task: {:?}", e));
+        }
+    }
+
+    // Commit the transaction if everything succeeded
+    if let Err(e) = conn.execute("COMMIT", params!()).await {
+        return Err(format!("Failed to commit transaction: {:?}", e));
+    }
+
+    Ok(())
+}
