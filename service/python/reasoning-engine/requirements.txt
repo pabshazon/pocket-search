@@ -15,4 +15,4 @@ sentence-transformers
 docling
 jsonpointer
 sqlite-vec
-chromadb
+
