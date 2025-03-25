@@ -30,6 +30,7 @@ dist-ssr
 
 #python
 __pycache__
+.venv_reasoning_engine
 
 #node
 node_modules
